@@ -51,6 +51,10 @@ pub enum CallbackAction {
     ShowTokenMenu,
     PromptTokenCreate { auto_approve: bool },
     ShowTokenList,
+    ShowTokenListPage { page: i64 },
+    OpenTokenCard { token_id: i64, page: i64 },
+    ConfirmTokenRevoke { token_id: i64, page: i64 },
+    ExecuteTokenRevoke { token_id: i64, page: i64 },
     PromptTokenRevoke,
     PromptCreateUser,
     PromptDeleteUser,
@@ -95,6 +99,16 @@ impl CallbackAction {
                 format!("v1|admin|token|create|{auto_approve}")
             }
             Self::ShowTokenList => "v1|admin|token|list".to_string(),
+            Self::ShowTokenListPage { page } => format!("v1|admin|token|page|{page}"),
+            Self::OpenTokenCard { token_id, page } => {
+                format!("v1|admin|token|open|{token_id}|{page}")
+            }
+            Self::ConfirmTokenRevoke { token_id, page } => {
+                format!("v1|admin|token|revoke|confirm|{token_id}|{page}")
+            }
+            Self::ExecuteTokenRevoke { token_id, page } => {
+                format!("v1|admin|token|revoke|execute|{token_id}|{page}")
+            }
             Self::PromptTokenRevoke => "v1|admin|token|revoke".to_string(),
             Self::PromptCreateUser => "v1|admin|create".to_string(),
             Self::PromptDeleteUser => "v1|admin|delete".to_string(),
@@ -158,6 +172,25 @@ impl CallbackAction {
                 auto_approve: *auto_approve == "1",
             }),
             ["v1", "admin", "token", "list"] => Some(Self::ShowTokenList),
+            ["v1", "admin", "token", "page", page] => Some(Self::ShowTokenListPage {
+                page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "token", "open", token_id, page] => Some(Self::OpenTokenCard {
+                token_id: parse_i64(token_id)?,
+                page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "token", "revoke", "confirm", token_id, page] => {
+                Some(Self::ConfirmTokenRevoke {
+                    token_id: parse_i64(token_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            ["v1", "admin", "token", "revoke", "execute", token_id, page] => {
+                Some(Self::ExecuteTokenRevoke {
+                    token_id: parse_i64(token_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "token", "revoke"] => Some(Self::PromptTokenRevoke),
             ["v1", "admin", "create"] => Some(Self::PromptCreateUser),
             ["v1", "admin", "delete"] => Some(Self::PromptDeleteUser),

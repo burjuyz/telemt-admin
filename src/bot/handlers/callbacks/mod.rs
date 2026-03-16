@@ -1,9 +1,10 @@
 use super::callback_data::{CallbackAction, ServiceAction};
 use super::commands::has_active_users;
 use super::screens::{
-    admin_show_service_panel, admin_show_stats, admin_show_users_page, send_user_qr_to_admin,
-    show_admin_home, show_pending_request_card, show_pending_requests, show_token_list,
-    show_token_menu, show_usage_guide, show_user_ban_confirm, show_user_card, show_user_home,
+    admin_show_service_panel, admin_show_stats, admin_show_token_list_page, admin_show_users_page,
+    send_user_qr_to_admin, show_admin_home, show_pending_request_card, show_pending_requests,
+    show_token_card, show_token_list, show_token_menu, show_token_revoke_confirm, show_usage_guide,
+    show_user_ban_confirm, show_user_card, show_user_home,
 };
 use super::shared::{
     HandlerResult, approve_request_and_build_link, callback_message_target, perform_hard_ban,
@@ -289,6 +290,71 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: BotState) -> Handler
             bot.answer_callback_query(q.id.clone()).await?;
             if let Some((chat_id, message_id)) = callback_message_target(&q) {
                 show_token_list(&bot, chat_id, Some(message_id), &state).await?;
+            }
+        }
+        CallbackAction::ShowTokenListPage { page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                admin_show_token_list_page(&bot, chat_id, &state, page, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::OpenTokenCard { token_id, page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let Some((chat_id, message_id)) = callback_message_target(&q) else {
+                return Ok(());
+            };
+            let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? else {
+                bot.answer_callback_query(q.id.clone())
+                    .text("Токен уже недоступен")
+                    .show_alert(true)
+                    .await?;
+                admin_show_token_list_page(&bot, chat_id, &state, page, Some(message_id)).await?;
+                return Ok(());
+            };
+            bot.answer_callback_query(q.id.clone())
+                .text("Открыта карточка токена")
+                .await?;
+            show_token_card(&bot, chat_id, message_id, &token, page).await?;
+        }
+        CallbackAction::ConfirmTokenRevoke { token_id, page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let Some((chat_id, message_id)) = callback_message_target(&q) else {
+                return Ok(());
+            };
+            let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? else {
+                bot.answer_callback_query(q.id.clone())
+                    .text("Токен уже недоступен")
+                    .show_alert(true)
+                    .await?;
+                admin_show_token_list_page(&bot, chat_id, &state, page, Some(message_id)).await?;
+                return Ok(());
+            };
+            bot.answer_callback_query(q.id.clone()).await?;
+            show_token_revoke_confirm(&bot, chat_id, message_id, &token, page).await?;
+        }
+        CallbackAction::ExecuteTokenRevoke { token_id, page } => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            let revoked = state.db.revoke_invite_token_by_id(token_id).await?;
+            let status_text = if revoked {
+                tracing::info!("Admin {} revoked invite token #{}", admin_id, token_id);
+                "Токен отозван".to_string()
+            } else {
+                "Токен не найден или уже недоступен".to_string()
+            };
+            bot.answer_callback_query(q.id.clone())
+                .text(status_text.clone())
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                admin_show_token_list_page(&bot, chat_id, &state, page, Some(message_id)).await?;
             }
         }
         CallbackAction::PromptTokenRevoke => {

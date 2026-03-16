@@ -1,6 +1,6 @@
 use super::format::{
-    format_timestamp, render_invite_token_line, render_user_card_text, usage_guide_text,
-    user_display_name,
+    format_timestamp, render_invite_token_button_title, render_invite_token_card_text,
+    render_user_card_text, usage_guide_text, user_display_name,
 };
 use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
@@ -123,7 +123,7 @@ pub async fn show_token_menu(
 Выберите действие:\n\
 - создать новый токен;\n\
 - посмотреть активные;\n\
-- отозвать существующий.";
+- открыть карточку токена и при необходимости отозвать его.";
     upsert_screen(
         bot,
         chat_id,
@@ -140,27 +140,98 @@ pub async fn show_token_list(
     message_id: Option<MessageId>,
     state: &BotState,
 ) -> HandlerResult {
-    let tokens = state.db.list_active_invite_tokens(50).await?;
-    let text = if tokens.is_empty() {
-        "Активных invite-токенов нет.".to_string()
+    admin_show_token_list_page(bot, chat_id, state, 1, message_id).await
+}
+
+pub async fn admin_show_token_list_page(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    requested_page: i64,
+    message_id: Option<MessageId>,
+) -> HandlerResult {
+    let total_tokens = state.db.count_active_invite_tokens().await?;
+    let tokens_page_size = state.config.users_page_size.max(1);
+    if total_tokens <= 0 {
+        let text = "Активных invite-токенов нет.".to_string();
+        let keyboard = crate::bot::keyboards::token_menu_keyboard(
+            state.config.security.allow_auto_approve_tokens,
+        );
+        if let Some(message_id) = message_id {
+            bot.edit_message_text(chat_id, message_id, text)
+                .reply_markup(keyboard)
+                .await?;
+        } else {
+            bot.send_message(chat_id, text)
+                .reply_markup(keyboard)
+                .await?;
+        }
+        return Ok(());
+    }
+
+    let total_pages = ((total_tokens + tokens_page_size - 1) / tokens_page_size).max(1);
+    let page = requested_page.clamp(1, total_pages);
+    let offset = (page - 1) * tokens_page_size;
+    let tokens = state
+        .db
+        .list_active_invite_tokens_page(tokens_page_size, offset)
+        .await?;
+
+    let items: Vec<(i64, String)> = tokens
+        .iter()
+        .map(|token| (token.id, render_invite_token_button_title(token)))
+        .collect();
+    let text = format!(
+        "🎟 Активные invite-токены\nВсего: {}\nСтраница: {}/{}\n\nВыберите токен, чтобы открыть карточку.",
+        total_tokens, page, total_pages
+    );
+    let keyboard = crate::bot::keyboards::token_list_keyboard(&items, page, total_pages);
+
+    if let Some(message_id) = message_id {
+        bot.edit_message_text(chat_id, message_id, text)
+            .reply_markup(keyboard)
+            .await?;
     } else {
-        format!(
-            "Активные invite-токены\n\n{}",
-            tokens
-                .iter()
-                .map(render_invite_token_line)
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    };
-    upsert_screen(
-        bot,
+        bot.send_message(chat_id, text)
+            .reply_markup(keyboard)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn show_token_card(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    token: &crate::db::InviteToken,
+    page: i64,
+) -> HandlerResult {
+    bot.edit_message_text(chat_id, message_id, render_invite_token_card_text(token))
+        .reply_markup(crate::bot::keyboards::token_card_keyboard(token.id, page))
+        .await?;
+    Ok(())
+}
+
+pub async fn show_token_revoke_confirm(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    token: &crate::db::InviteToken,
+    page: i64,
+) -> HandlerResult {
+    bot.edit_message_text(
         chat_id,
         message_id,
-        text,
-        crate::bot::keyboards::token_list_keyboard(),
+        format!(
+            "Отозвать invite-токен {}?\n\nПосле этого его нельзя будет использовать для регистрации.",
+            token.token
+        ),
     )
-    .await
+    .reply_markup(crate::bot::keyboards::confirm_token_revoke_keyboard(
+        token.id, page,
+    ))
+    .await?;
+    Ok(())
 }
 
 pub async fn show_delete_user_confirm(

@@ -583,6 +583,64 @@ impl Db {
         Ok(rows)
     }
 
+    pub async fn count_active_invite_tokens(&self) -> Result<i64, anyhow::Error> {
+        let now = current_unix_timestamp()?;
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*)
+             FROM invite_tokens
+             WHERE is_active = 1
+               AND expires_at > ?
+               AND (max_usage IS NULL OR usage_count < max_usage)",
+        )
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    pub async fn list_active_invite_tokens_page(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<InviteToken>, anyhow::Error> {
+        let now = current_unix_timestamp()?;
+        let rows = sqlx::query_as::<_, InviteToken>(
+            "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active
+             FROM invite_tokens
+             WHERE is_active = 1
+               AND expires_at > ?
+               AND (max_usage IS NULL OR usage_count < max_usage)
+             ORDER BY expires_at ASC, id ASC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(now)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_active_invite_token_by_id(
+        &self,
+        token_id: i64,
+    ) -> Result<Option<InviteToken>, anyhow::Error> {
+        let now = current_unix_timestamp()?;
+        let token = sqlx::query_as::<_, InviteToken>(
+            "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active
+             FROM invite_tokens
+             WHERE id = ?
+               AND is_active = 1
+               AND expires_at > ?
+               AND (max_usage IS NULL OR usage_count < max_usage)",
+        )
+        .bind(token_id)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(token)
+    }
+
     pub async fn revoke_invite_token(&self, token: &str) -> Result<bool, anyhow::Error> {
         let now = current_unix_timestamp()?;
         let result = sqlx::query(
@@ -590,6 +648,24 @@ impl Db {
         )
         .bind(now)
         .bind(token)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn revoke_invite_token_by_id(&self, token_id: i64) -> Result<bool, anyhow::Error> {
+        let now = current_unix_timestamp()?;
+        let result = sqlx::query(
+            "UPDATE invite_tokens
+             SET is_active = 0, revoked_at = ?
+             WHERE id = ?
+               AND is_active = 1
+               AND expires_at > ?
+               AND (max_usage IS NULL OR usage_count < max_usage)",
+        )
+        .bind(now)
+        .bind(token_id)
+        .bind(now)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)

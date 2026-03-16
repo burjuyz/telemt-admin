@@ -245,30 +245,23 @@ pub fn service_control_buttons() -> InlineKeyboardMarkup {
 pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
     let mut rows = vec![
         vec![InlineKeyboardButton::callback(
+            "📋 Список токенов",
+            CallbackAction::ShowTokenListPage { page: 1 }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
             "🎫 Создать ручной токен",
             CallbackAction::PromptTokenCreate {
                 auto_approve: false,
             }
             .encode(),
         )],
-        vec![InlineKeyboardButton::callback(
-            "📋 Список токенов",
-            CallbackAction::ShowTokenList.encode(),
-        )],
-        vec![InlineKeyboardButton::callback(
-            "🗑 Отозвать токен",
-            CallbackAction::PromptTokenRevoke.encode(),
-        )],
     ];
 
     if auto_approve_enabled {
-        rows.insert(
-            1,
-            vec![InlineKeyboardButton::callback(
+        rows.insert(1, vec![InlineKeyboardButton::callback(
                 "🚀 Создать авто-токен",
                 CallbackAction::PromptTokenCreate { auto_approve: true }.encode(),
-            )],
-        );
+            )]);
     }
 
     rows.push(vec![InlineKeyboardButton::callback(
@@ -278,17 +271,83 @@ pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
-pub fn token_list_keyboard() -> InlineKeyboardMarkup {
+pub fn token_list_keyboard(
+    tokens: &[(i64, String)],
+    page: i64,
+    total_pages: i64,
+) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    for (token_id, title) in tokens {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("🎟 {}", title),
+            CallbackAction::OpenTokenCard {
+                token_id: *token_id,
+                page,
+            }
+            .encode(),
+        )]);
+    }
+
+    let prev_page = if page > 1 { page - 1 } else { 1 };
+    let next_page = if page < total_pages {
+        page + 1
+    } else {
+        total_pages
+    };
+
+    rows.push(vec![
+        InlineKeyboardButton::callback(
+            "⬅️",
+            CallbackAction::ShowTokenListPage { page: prev_page }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            format!("📄 {}/{}", page, total_pages.max(1)),
+            CallbackAction::ShowTokenListPage { page }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "➡️",
+            CallbackAction::ShowTokenListPage { page: next_page }.encode(),
+        ),
+    ]);
+    rows.push(vec![
+        InlineKeyboardButton::callback(
+            "🔄 Обновить",
+            CallbackAction::ShowTokenListPage { page }.encode(),
+        ),
+        InlineKeyboardButton::callback("⬅️ Назад", CallbackAction::ShowTokenMenu.encode()),
+    ]);
+    rows.push(vec![InlineKeyboardButton::callback(
+        "🏠 Главная",
+        CallbackAction::ShowAdminHome.encode(),
+    )]);
+
+    InlineKeyboardMarkup::new(rows)
+}
+
+pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowTokenList.encode()),
-            InlineKeyboardButton::callback("⬅️ Назад", CallbackAction::ShowTokenMenu.encode()),
-        ],
         vec![InlineKeyboardButton::callback(
-            "🏠 Главная",
-            CallbackAction::ShowAdminHome.encode(),
+            "🗑 Отозвать токен",
+            CallbackAction::ConfirmTokenRevoke { token_id, page }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад к списку",
+            CallbackAction::ShowTokenListPage { page }.encode(),
         )],
     ])
+}
+
+pub fn confirm_token_revoke_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "✅ Подтвердить",
+            CallbackAction::ExecuteTokenRevoke { token_id, page }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::OpenTokenCard { token_id, page }.encode(),
+        ),
+    ]])
 }
 
 pub fn stats_keyboard() -> InlineKeyboardMarkup {
