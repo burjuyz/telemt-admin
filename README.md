@@ -1,4 +1,12 @@
-# telemt-admin
+<p align="center">
+  <img src="logo.png" alt="telemt-admin logo" width="800">
+</p>
+
+<h1 align="center">telemt-admin</h1>
+
+<p align="center">
+  Telegram-бот для автоматизации управления пользователями <a href="https://github.com/telemt/telemt">telemt</a> (MTProto прокси-сервера).
+</p>
 
 **telemt-admin** — это Telegram-бот для автоматизации управления пользователями [telemt](https://github.com/telemt/telemt) (MTProto прокси-сервера). Проект создан для системных администраторов, которым нужно делегировать процесс выдачи доступа, избавившись от ручного редактирования конфигурационных файлов.
 
