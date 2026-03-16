@@ -1,20 +1,38 @@
 //! telemt-admin — Telegram-бот для администрирования MTProxy telemt.
 
 mod bot;
+mod cli;
 mod config;
 mod db;
 mod link;
 mod service;
 mod telemt_cfg;
+mod update;
 
-use std::path::PathBuf;
+use clap::Parser;
 use std::sync::Arc;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
 
+use cli::{Cli, Commands};
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::CheckUpdate) => {
+            update::run_check_update().await?;
+            return Ok(());
+        }
+        Some(Commands::SelfUpdate) => {
+            update::run_self_update().await?;
+            return Ok(());
+        }
+        None => {}
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -22,10 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .init();
 
-    let config_path = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/etc/telemt-admin.toml"));
+    let config_path = cli.config_path();
     tracing::info!(
         "Starting telemt-admin with config {}",
         config_path.display()

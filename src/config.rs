@@ -3,6 +3,9 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+/// Путь к конфигу по умолчанию.
+pub const DEFAULT_CONFIG_PATH: &str = "/etc/telemt-admin.toml";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// Токен Telegram бота (или через TELOXIDE_TOKEN)
