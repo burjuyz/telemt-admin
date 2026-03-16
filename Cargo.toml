@@ -1,6 +1,6 @@
 [package]
 name = "telemt-admin"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 
 [dependencies]
@@ -21,7 +21,10 @@ urlencoding = "2.1.3"
 qrcode = "0.14"
 image = { version = "0.25", default-features = false, features = ["png"] }
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 semver = "1.0"
 sha2 = "0.10"
 flate2 = "1.0"
