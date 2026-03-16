@@ -328,7 +328,13 @@ sudo journalctl -u telemt-admin.service -n 50 --no-pager
 
 ## Обновление
 
-### Проверка и автообновление
+### Обновление telemt (при установке быстрым скриптом)
+
+```bash
+curl -fsSL https://github.com/telemt/telemt/releases/latest/download/telemt-$(uname -m)-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin/ && sudo systemctl restart telemt.service
+```
+
+### Проверка и автообновление telemt-admin
 
 Проверить наличие новой версии:
 
