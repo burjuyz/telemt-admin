@@ -140,15 +140,21 @@ impl TelemtConfig {
             .parse()
             .map_err(|e| anyhow::anyhow!("Ошибка парсинга TOML: {}", e))?;
 
-        let access = doc
-            .get_mut("access")
-            .and_then(|a| a.as_table_mut())
-            .ok_or_else(|| anyhow::anyhow!("Секция [access] не найдена"))?;
+        let Some(access) = doc.get_mut("access").and_then(|a| a.as_table_mut()) else {
+            tracing::warn!(
+                username = username,
+                "Section [access] is missing in telemt config while removing user"
+            );
+            return Ok(false);
+        };
 
-        let users = access
-            .get_mut("users")
-            .and_then(|u| u.as_table_mut())
-            .ok_or_else(|| anyhow::anyhow!("Секция [access.users] не найдена"))?;
+        let Some(users) = access.get_mut("users").and_then(|u| u.as_table_mut()) else {
+            tracing::warn!(
+                username = username,
+                "Section [access.users] is missing in telemt config while removing user"
+            );
+            return Ok(false);
+        };
 
         let existed = users.contains_key(username);
         users.remove(username);
