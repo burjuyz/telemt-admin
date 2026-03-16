@@ -18,6 +18,7 @@ CI/CD:
 - `.github/workflows/ci.yml` проверяет `cargo check --locked` и `cargo clippy --all-targets -- -D warnings`;
 - `.github/workflows/release.yml` собирает релизы для Linux и Windows по тегам `v*.*.*`;
 - changelog формируется через `git-cliff` и Conventional Commits.
+- `scripts/install.sh` ориентирован на Linux x86_64 (glibc) + `systemd` и скачивает release-артефакты из GitHub.
 
 Конвенции:
 

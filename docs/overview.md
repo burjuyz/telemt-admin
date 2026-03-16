@@ -18,6 +18,11 @@
 - `toml` и `toml_edit`
 - `tracing`, `tracing-subscriber`
 
+Целевой production-deploy для текущего MVP:
+
+- Linux x86_64 (glibc) с `systemd`;
+- bootstrap-установка через `scripts/install.sh`.
+
 Ключевые инварианты:
 
 - пользователь `telemt` маппится как `tg_<telegram_user_id>`;

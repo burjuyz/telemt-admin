@@ -12,6 +12,7 @@
 - [Зачем это нужно?](#зачем-это-нужно)
 - [Требования](#требования)
 - [Быстрый старт (Linux)](#быстрый-старт-linux)
+- [Ручная установка](#ручная-установка)
 - [Установка как системного сервиса](#установка-как-системного-сервиса)
 - [Как пользоваться](#как-пользоваться)
 - [Конфигурация (telemt-admin.toml)](#конфигурация-telemt-admintoml)
@@ -38,19 +39,73 @@
 
 ## Требования
 
-- Linux-сервер с `systemd` (для управления `telemt.service`).
-- Установленный и работающий `telemt`.
+- Linux-сервер с `systemd`.
+- `root`-доступ или `sudo`.
 - Telegram-бот и токен от [@BotFather](https://t.me/BotFather).
 - Telegram user ID администраторов (можно получить через `@userinfobot`).
-- Права на запись в конфиг `telemt` и на управление `telemt.service` через `systemd` (через Polkit или sudo-правила).
+- Публичный IPv4 сервера для `announce`.
+- Домен для `tls_domain`.
 
 ## Быстрый старт (Linux)
 
-Самый быстрый способ развернуть бота — использовать готовый бинарный файл.
+Основной сценарий установки теперь - один bootstrap-скрипт, который:
 
-### 1. Скачивание актуальной версии
+- скачивает последние релизы `telemt` и `telemt-admin`;
+- кладёт бинарники в `/usr/local/bin`;
+- создаёт `telemt.toml`, `telemt-admin.toml`, `systemd` unit-файлы и Polkit-правило;
+- включает и запускает `telemt.service` и `telemt-admin.service`.
 
-Одной командой скачайте последний стабильный релиз для Linux x86_64:
+Запуск:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fgbm/telemt-admin/main/scripts/install.sh | sudo bash
+```
+
+Во время установки скрипт спросит только минимально необходимые значения:
+
+- `bot_token`
+- `admin_ids`
+- `port` для `telemt` (по умолчанию `443`)
+- `tls_domain`
+- `announce` (публичный IPv4 сервера)
+
+После завершения можно проверить статус:
+
+```bash
+sudo systemctl status telemt.service
+sudo systemctl status telemt-admin.service
+```
+
+Скрипт генерирует минимальный `/etc/telemt.toml` такого вида:
+
+```toml
+[general]
+use_middle_proxy = false
+
+[general.modes]
+classic = false
+secure = false
+tls = true
+
+[server]
+port = 443
+
+[server.api]
+enabled = true
+
+[censorship]
+tls_domain = "site.example"
+
+[[server.listeners]]
+ip = "0.0.0.0"
+announce = "X.X.X.X"
+```
+
+## Ручная установка
+
+Если хотите развернуть всё вручную без bootstrap-скрипта, ниже остаётся reference-сценарий.
+
+### 1. Скачивание актуальной версии `telemt-admin`
 
 ```bash
 curl -L -o telemt-admin.tar.gz https://github.com/fgbm/telemt-admin/releases/latest/download/telemt-admin-linux-x86_64.tar.gz && tar -xzf telemt-admin.tar.gz
@@ -63,7 +118,7 @@ sudo mv telemt-admin /usr/local/bin/
 sudo chmod +x /usr/local/bin/telemt-admin
 ```
 
-### 3. Минимальная конфигурация
+### 3. Минимальная конфигурация `telemt-admin`
 
 Создайте файл `/etc/telemt-admin.toml`:
 
