@@ -105,7 +105,7 @@ pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult 
 /start — открыть главный экран администратора
 /help — показать эту справку
 /service — открыть панель управления сервисом
-/token — открыть мастер invite-токенов
+/token — открыть меню invite-токенов
 /create — запустить создание пользователя
 /delete — запустить удаление пользователя
 /approve <id> — быстро одобрить заявку
@@ -497,7 +497,7 @@ async fn cmd_token(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
                  Режим: {}\n\
                  Действует до: {}\n\
                  Лимит использований: {}\n\
-                 Используйте команду <code>/token revoke {}</code> для отзыва.",
+                 Для отзыва откройте `/token` -> список токенов -> карточку токена или используйте команду <code>/token revoke {}</code>.",
                 token.token,
                 link_line,
                 format_mode(token.auto_approve),
@@ -787,7 +787,7 @@ pub async fn handle_token_create_from_text(
          Режим: {}\n\
          Действует до: {}\n\
          Лимит использований: {}\n\
-         Для отзыва используйте `/token` -> «Отозвать токен» или старую команду <code>/token revoke {}</code>.",
+         Для отзыва откройте `/token` -> список токенов -> карточку токена или используйте команду <code>/token revoke {}</code>.",
         token.token,
         link_line,
         format_mode(token.auto_approve),
