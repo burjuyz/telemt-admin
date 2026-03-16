@@ -1,0 +1,18 @@
+---
+description: Rust module boundaries for telemt-admin
+globs: src/**/*.rs
+alwaysApply: false
+---
+
+# Rust Module Boundaries
+
+- Сохраняй модульные границы проекта:
+  - Telegram/UI-логика в `src/bot/handlers*` и `src/bot/keyboards.rs`
+  - БД-операции в `src/db.rs`
+  - Работа с `telemt.toml` в `src/telemt_cfg.rs`
+  - `systemd`-операции в `src/service.rs`
+- Пользователь `telemt` должен маппиться как `tg_<telegram_user_id>`.
+- `telemt` поддерживает hot reload: после записи `telemt.toml` не добавляй обязательный `restart` без причины.
+- Ошибки и пользовательские тексты держи преимущественно на русском языке.
+- Логи и сообщения должны оставаться информативными и содержать контекст через `tracing`.
+- Избегай God Variables и "выстрела дробью"; константы и лимиты выноси в настройки.
