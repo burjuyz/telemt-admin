@@ -10,10 +10,10 @@ mod commands;
 mod format;
 #[path = "handlers/menu.rs"]
 mod menu;
-#[path = "handlers/shared.rs"]
-mod shared;
 #[path = "handlers/screens.rs"]
 mod screens;
+#[path = "handlers/shared.rs"]
+mod shared;
 #[path = "handlers/state.rs"]
 mod state;
 

@@ -1,5 +1,5 @@
 use super::format::format_timestamp;
-use super::state::{clear_wizard_state, sender_user_id, telemt_username, BotState};
+use super::state::{BotState, clear_wizard_state, sender_user_id, telemt_username};
 use crate::db::{
     ConsumedInviteToken, RegisterResult, RegistrationRequest, TokenConsumeError, TokenMode,
 };
@@ -363,9 +363,13 @@ pub async fn send_user_link(
                     tg_user_id = tg_user_id,
                     "Администратор запросил ссылку без существующей учётной записи, создаём доступ автоматически"
                 );
-                let link =
-                    approve_user_direct_and_build_link(state, tg_user_id, tg_username, tg_display_name)
-                        .await?;
+                let link = approve_user_direct_and_build_link(
+                    state,
+                    tg_user_id,
+                    tg_username,
+                    tg_display_name,
+                )
+                .await?;
                 bot.send_message(chat_id, format!("Ваша ссылка на прокси:\n\n{}", link))
                     .await?;
             } else {

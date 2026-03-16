@@ -1,5 +1,8 @@
-use super::format::{format_timestamp, render_user_card_text, usage_guide_text, user_display_name};
-use super::shared::{build_user_qr_png_bytes, callback_message_target, HandlerResult};
+use super::format::{
+    format_timestamp, render_invite_token_line, render_user_card_text, usage_guide_text,
+    user_display_name,
+};
+use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
 use crate::db::RequestStatus;
 use crate::link::build_proxy_link;
@@ -65,7 +68,8 @@ pub async fn show_user_home(
     let text = if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
         match existing.status {
             RequestStatus::Approved => {
-                "Доступ уже одобрен.\n\nИспользуйте /link, чтобы получить ссылку на прокси.".to_string()
+                "Доступ уже одобрен.\n\nНажмите «Получить ссылку» или используйте /link."
+                    .to_string()
             }
             RequestStatus::Pending => {
                 "Ваша заявка уже на рассмотрении.\n\nДождитесь решения администратора."
@@ -130,6 +134,35 @@ pub async fn show_token_menu(
     .await
 }
 
+pub async fn show_token_list(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+) -> HandlerResult {
+    let tokens = state.db.list_active_invite_tokens(50).await?;
+    let text = if tokens.is_empty() {
+        "Активных invite-токенов нет.".to_string()
+    } else {
+        format!(
+            "Активные invite-токены\n\n{}",
+            tokens
+                .iter()
+                .map(render_invite_token_line)
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::token_list_keyboard(),
+    )
+    .await
+}
+
 pub async fn show_delete_user_confirm(
     bot: &Bot,
     chat_id: ChatId,
@@ -144,6 +177,71 @@ pub async fn show_delete_user_confirm(
     )
     .reply_markup(crate::bot::keyboards::confirm_delete_keyboard(tg_user_id))
     .await?;
+    Ok(())
+}
+
+pub async fn show_pending_requests(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+) -> HandlerResult {
+    let pending = state.db.list_pending_requests(10).await?;
+    let text = if pending.is_empty() {
+        "📥 Заявки\n\nНовых заявок нет.".to_string()
+    } else {
+        format!(
+            "📥 Заявки\n\nНовых заявок: {}\n\nВыберите заявку, чтобы открыть карточку.",
+            pending.len()
+        )
+    };
+    let items: Vec<(i64, String)> = pending
+        .iter()
+        .map(|req| {
+            (
+                req.id,
+                format!("📋 #{} · {}", req.id, user_display_name(req)),
+            )
+        })
+        .collect();
+
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::pending_requests_keyboard(&items),
+    )
+    .await
+}
+
+pub async fn show_pending_request_card(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    request: &crate::db::RegistrationRequest,
+) -> HandlerResult {
+    let text = format!(
+        "📋 Заявка #{}\n\n\
+         👤 {}\n\
+         🆔 {}\n\
+         📱 {}\n\
+         📅 {}",
+        request.id,
+        user_display_name(request),
+        request.tg_user_id,
+        request
+            .tg_username
+            .as_deref()
+            .map(|username| format!("@{}", username))
+            .unwrap_or_else(|| "—".to_string()),
+        format_timestamp(request.created_at),
+    );
+    bot.edit_message_text(chat_id, message_id, text)
+        .reply_markup(crate::bot::keyboards::pending_request_card_keyboard(
+            request.id,
+        ))
+        .await?;
     Ok(())
 }
 
@@ -169,39 +267,6 @@ pub async fn show_user_ban_confirm(
     Ok(())
 }
 
-pub async fn admin_show_pending(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    let pending = state.db.list_pending_requests(10).await?;
-    if pending.is_empty() {
-        bot.send_message(chat_id, "Новых заявок нет.")
-            .reply_markup(crate::bot::keyboards::admin_home_keyboard())
-            .await?;
-        return Ok(());
-    }
-
-    bot.send_message(chat_id, format!("Найдено новых заявок: {}", pending.len()))
-        .reply_markup(crate::bot::keyboards::admin_home_keyboard())
-        .await?;
-
-    for req in pending {
-        let text = format!(
-            "📋 Заявка #{}:\n\
-             User ID: {}\n\
-             Username: @{}\n\
-             Имя: {}\n\
-             Время: {}",
-            req.id,
-            req.tg_user_id,
-            req.tg_username.as_deref().unwrap_or("—"),
-            req.tg_display_name.as_deref().unwrap_or("—"),
-            format_timestamp(req.created_at),
-        );
-        bot.send_message(chat_id, text)
-            .reply_markup(crate::bot::keyboards::approve_reject_buttons(req.id))
-            .await?;
-    }
-    Ok(())
-}
-
 pub async fn admin_show_users_page(
     bot: &Bot,
     chat_id: ChatId,
@@ -219,7 +284,9 @@ pub async fn admin_show_users_page(
                 .reply_markup(keyboard)
                 .await?;
         } else {
-            bot.send_message(chat_id, text).reply_markup(keyboard).await?;
+            bot.send_message(chat_id, text)
+                .reply_markup(keyboard)
+                .await?;
         }
         return Ok(());
     }
@@ -241,7 +308,10 @@ pub async fn admin_show_users_page(
             } else {
                 display_name
             };
-            (user.tg_user_id, format!("{} (id {})", short, user.tg_user_id))
+            (
+                user.tg_user_id,
+                format!("{} (id {})", short, user.tg_user_id),
+            )
         })
         .collect();
 
@@ -256,12 +326,19 @@ pub async fn admin_show_users_page(
             .reply_markup(keyboard)
             .await?;
     } else {
-        bot.send_message(chat_id, text).reply_markup(keyboard).await?;
+        bot.send_message(chat_id, text)
+            .reply_markup(keyboard)
+            .await?;
     }
     Ok(())
 }
 
-pub async fn admin_show_stats(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
+pub async fn admin_show_stats(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    message_id: Option<MessageId>,
+) -> HandlerResult {
     let stats = state.db.admin_stats().await?;
     let text = format!(
         "📊 Статистика:\n\
@@ -272,10 +349,14 @@ pub async fn admin_show_stats(bot: &Bot, chat_id: ChatId, state: &BotState) -> H
          Удалённые: {}",
         stats.total, stats.pending, stats.approved, stats.rejected, stats.deleted
     );
-    bot.send_message(chat_id, text)
-        .reply_markup(crate::bot::keyboards::admin_home_keyboard())
-        .await?;
-    Ok(())
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::stats_keyboard(),
+    )
+    .await
 }
 
 pub async fn admin_show_service_panel(
@@ -312,7 +393,12 @@ pub async fn send_user_qr_to_admin(
     let params = state.telemt_cfg.read_link_params()?;
     let link = build_proxy_link(&params, secret)?;
     let qr_png = build_user_qr_png_bytes(&link)?;
-    let caption = format!("👤 {} ({})\n\n🔗 {}", user_display_name(user), user.tg_user_id, link);
+    let caption = format!(
+        "👤 {} ({})\n\n🔗 {}",
+        user_display_name(user),
+        user.tg_user_id,
+        link
+    );
 
     if let Some((chat_id, _)) = callback_message_target(q) {
         bot.send_photo(

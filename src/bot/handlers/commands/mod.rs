@@ -1,17 +1,17 @@
 use super::callback_data::CallbackAction;
 use super::format::{format_date, format_mode, render_invite_token_line};
 use super::screens::{
-    admin_show_service_panel, show_admin_home, show_delete_user_confirm, show_token_menu,
-    show_user_home, send_text_with_keyboard_removed,
+    admin_show_service_panel, send_text_with_keyboard_removed, show_admin_home,
+    show_delete_user_confirm, show_token_menu, show_user_home,
 };
 use super::shared::{
-    approve_request_and_build_link, approve_user_direct_and_build_link, build_bot_start_link,
-    parse_create_target, parse_start_token, process_invite_token, send_user_link, user_id_or_reply,
-    CreateTarget, HandlerResult,
+    CreateTarget, HandlerResult, approve_request_and_build_link,
+    approve_user_direct_and_build_link, build_bot_start_link, parse_create_target,
+    parse_start_token, process_invite_token, send_user_link, user_id_or_reply,
 };
 use super::state::{
-    clear_wizard_state, is_admin_message, sender_display_name, sender_user_id, set_wizard_state,
-    telemt_username, BotState, WizardState,
+    BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
+    sender_user_id, set_wizard_state, telemt_username,
 };
 use crate::db::RequestStatus;
 use teloxide::dptree;
@@ -46,7 +46,8 @@ pub fn telegram_commands() -> Vec<teloxide::types::BotCommand> {
     BotCommand::bot_commands()
 }
 
-pub fn handler() -> teloxide::dispatching::UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
+pub fn handler()
+-> teloxide::dispatching::UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
     dptree::filter(|msg: Message| {
         msg.text()
             .is_some_and(|text| text.trim_start().starts_with('/'))
@@ -56,9 +57,9 @@ pub fn handler() -> teloxide::dispatching::UpdateHandler<Box<dyn std::error::Err
 
 fn extract_command_name<'a>(text: &'a str, bot_username: Option<&str>) -> Option<&'a str> {
     let command = text.split_whitespace().next()?.strip_prefix('/')?;
-    let (name, mentioned_bot) = command.split_once('@').map_or((command, None), |(name, bot)| {
-        (name, Some(bot))
-    });
+    let (name, mentioned_bot) = command
+        .split_once('@')
+        .map_or((command, None), |(name, bot)| (name, Some(bot)));
     if let (Some(mentioned_bot), Some(bot_username)) = (mentioned_bot, bot_username) {
         let bot_username = bot_username.trim_start_matches('@');
         if !mentioned_bot.eq_ignore_ascii_case(bot_username) {
@@ -142,18 +143,6 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         "Received /start command"
     );
 
-    if state.config.is_admin(user_id) {
-        clear_wizard_state(&state, user_id).await?;
-        send_text_with_keyboard_removed(
-            &bot,
-            msg.chat.id,
-            "Постоянное меню отключено. Используйте slash-команды и inline-кнопки.",
-        )
-        .await?;
-        show_admin_home(&bot, msg.chat.id, None).await?;
-        return Ok(());
-    }
-
     let text = msg.text().unwrap_or("");
     if let Some(token) = parse_start_token(text) {
         process_invite_token(
@@ -169,12 +158,11 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         return Ok(());
     }
 
-    send_text_with_keyboard_removed(
-        &bot,
-        msg.chat.id,
-        "Постоянное меню отключено. Используйте slash-команды и inline-кнопки.",
-    )
-    .await?;
+    if state.config.is_admin(user_id) {
+        clear_wizard_state(&state, user_id).await?;
+        show_admin_home(&bot, msg.chat.id, None).await?;
+        return Ok(());
+    }
 
     if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
         clear_wizard_state(&state, user_id).await?;
@@ -322,14 +310,16 @@ async fn cmd_delete(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     let text = msg.text().unwrap_or("");
     let user_id = sender_user_id(&msg).unwrap_or_default();
     match text.split_whitespace().nth(1) {
-        Some(arg) => match arg.parse::<i64>() {
-            Ok(tg_user_id) => show_delete_user_confirm(&bot, msg.chat.id, tg_user_id).await?,
-            Err(_) => {
-                bot.send_message(msg.chat.id, "Использование: /delete <telegram_user_id>")
-                    .await?;
-            }
-        },
+        Some(arg) => {
+            let _ = prompt_delete_confirmation(&bot, msg.chat.id, &state, arg).await?;
+        }
         None => {
+            if !has_active_users(&state).await? {
+                clear_wizard_state(&state, user_id).await?;
+                bot.send_message(msg.chat.id, "Активных пользователей нет, удалять некого.")
+                    .await?;
+                return Ok(());
+            }
             clear_wizard_state(&state, user_id).await?;
             set_wizard_state(&state, user_id, WizardState::AdminDeleteAwaitingTarget).await?;
             bot.send_message(
@@ -590,7 +580,8 @@ pub async fn create_user_from_input(
             }
         }
         None => {
-            bot.send_message(chat_id, "Использование: ID или @username").await?;
+            bot.send_message(chat_id, "Использование: ID или @username")
+                .await?;
             return Ok(false);
         }
     };
@@ -610,10 +601,27 @@ pub async fn create_user_from_input(
 pub async fn prompt_delete_confirmation(
     bot: &Bot,
     chat_id: ChatId,
+    state: &BotState,
     arg: &str,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     match arg.trim().parse::<i64>() {
         Ok(tg_user_id) => {
+            if state
+                .db
+                .get_active_user_by_tg_user(tg_user_id)
+                .await?
+                .is_none()
+            {
+                bot.send_message(
+                    chat_id,
+                    format!(
+                        "Активный пользователь с Telegram ID {} не найден.",
+                        tg_user_id
+                    ),
+                )
+                .await?;
+                return Ok(false);
+            }
             show_delete_user_confirm(bot, chat_id, tg_user_id).await?;
             Ok(true)
         }
@@ -625,6 +633,12 @@ pub async fn prompt_delete_confirmation(
     }
 }
 
+pub async fn has_active_users(
+    state: &BotState,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(state.db.count_active_users().await? > 0)
+}
+
 pub async fn handle_token_create_from_text(
     bot: &Bot,
     chat_id: ChatId,
@@ -634,6 +648,12 @@ pub async fn handle_token_create_from_text(
     created_by: Option<i64>,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let security = &state.config.security;
+    let format_hint = format!(
+        "Отправьте одно число (дни) или два числа: дни и лимит использований.\n\
+         По умолчанию: {} дней, лимит без ограничений.\n\
+         Примеры: 7 или 7 3.",
+        security.default_token_days
+    );
     if auto_approve && !security.allow_auto_approve_tokens {
         bot.send_message(
             chat_id,
@@ -647,53 +667,88 @@ pub async fn handle_token_create_from_text(
     let mut max_uses: Option<i64> = None;
     let args: Vec<&str> = text.split_whitespace().collect();
     let mut index = 0;
+    let mut positional_numbers: Vec<i64> = Vec::new();
+
+    if args.is_empty() {
+        days = Some(security.default_token_days);
+    }
 
     while index < args.len() {
         match args[index] {
             "--max-uses" => {
                 let Some(value) = args.get(index + 1) else {
-                    bot.send_message(
-                        chat_id,
-                        "Формат: [days] [--max-uses N]\nНапример: 7 --max-uses 3 или пустое сообщение для значений по умолчанию.",
-                    )
-                    .await?;
+                    bot.send_message(chat_id, &format_hint).await?;
                     return Ok(false);
                 };
                 let parsed = match value.parse::<i64>() {
                     Ok(parsed) if parsed >= 1 => parsed,
                     _ => {
-                        bot.send_message(chat_id, "Параметр --max-uses должен быть >= 1.")
+                        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
                             .await?;
                         return Ok(false);
                     }
                 };
+                if max_uses.is_some() {
+                    bot.send_message(
+                        chat_id,
+                        "Лимит использований можно указать только один раз.",
+                    )
+                    .await?;
+                    return Ok(false);
+                }
                 max_uses = Some(parsed);
                 index += 2;
             }
             value => {
-                if let Ok(parsed_days) = value.parse::<i64>() {
-                    if days.is_some() {
-                        bot.send_message(chat_id, "Срок действия можно указать только один раз.")
-                            .await?;
+                if let Ok(parsed_number) = value.parse::<i64>() {
+                    positional_numbers.push(parsed_number);
+                    if positional_numbers.len() > 2 {
+                        bot.send_message(
+                            chat_id,
+                            "Укажите не больше двух чисел: срок в днях и лимит использований.",
+                        )
+                        .await?;
                         return Ok(false);
                     }
-                    days = Some(parsed_days);
                     index += 1;
                     continue;
                 }
-                bot.send_message(
-                    chat_id,
-                    "Формат: [days] [--max-uses N]\nНапример: 7 --max-uses 3.",
-                )
-                .await?;
+                bot.send_message(chat_id, &format_hint).await?;
                 return Ok(false);
             }
         }
     }
 
+    if let Some(parsed_days) = positional_numbers.first().copied() {
+        if days.is_some() {
+            bot.send_message(chat_id, "Срок действия можно указать только один раз.")
+                .await?;
+            return Ok(false);
+        }
+        days = Some(parsed_days);
+    }
+    if let Some(parsed_max_uses) = positional_numbers.get(1).copied() {
+        if max_uses.is_some() {
+            bot.send_message(
+                chat_id,
+                "Лимит использований можно указать только один раз.",
+            )
+            .await?;
+            return Ok(false);
+        }
+        max_uses = Some(parsed_max_uses);
+    }
+
     let days = days.unwrap_or(security.default_token_days);
     if days < 1 {
         bot.send_message(chat_id, "Срок действия должен быть не меньше 1 дня.")
+            .await?;
+        return Ok(false);
+    }
+    if let Some(max_uses) = max_uses
+        && max_uses < 1
+    {
+        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
             .await?;
         return Ok(false);
     }

@@ -1,9 +1,9 @@
 use super::commands::{
     create_user_from_input, handle_token_create_from_text, prompt_delete_confirmation,
 };
-use super::shared::{process_invite_token, HandlerResult};
+use super::shared::{HandlerResult, process_invite_token};
 use super::state::{
-    clear_wizard_state, sender_display_name, sender_user_id, wizard_state, BotState, WizardState,
+    BotState, WizardState, clear_wizard_state, sender_display_name, sender_user_id, wizard_state,
 };
 use teloxide::prelude::*;
 
@@ -43,7 +43,8 @@ pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> Han
             }
         }
         Some(WizardState::AdminDeleteAwaitingTarget) => {
-            let prompted = prompt_delete_confirmation(&bot, msg.chat.id, text.trim()).await?;
+            let prompted =
+                prompt_delete_confirmation(&bot, msg.chat.id, &state, text.trim()).await?;
             if prompted {
                 clear_wizard_state(&state, user_id).await?;
             }
@@ -85,7 +86,7 @@ pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> Han
         None => {
             bot.send_message(
                 msg.chat.id,
-                "Не понял запрос. Используйте /help или начните нужный сценарий через slash-команду.",
+                "Не понял запрос. Используйте /help или начните нужный сценарий через slash-команду либо кнопку.",
             )
             .await?;
         }

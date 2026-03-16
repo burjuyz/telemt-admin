@@ -21,7 +21,10 @@ impl WizardState {
             Self::AdminCreateAwaitingTarget => "admin_create_awaiting_target".to_string(),
             Self::AdminDeleteAwaitingTarget => "admin_delete_awaiting_target".to_string(),
             Self::AdminTokenCreateAwaitingParams { auto_approve } => {
-                format!("admin_token_create:{}", if *auto_approve { "auto" } else { "manual" })
+                format!(
+                    "admin_token_create:{}",
+                    if *auto_approve { "auto" } else { "manual" }
+                )
             }
             Self::AdminTokenRevokeAwaitingToken => "admin_token_revoke_awaiting_token".to_string(),
         }
@@ -33,9 +36,9 @@ impl WizardState {
             "admin_create_awaiting_target" => Some(Self::AdminCreateAwaitingTarget),
             "admin_delete_awaiting_target" => Some(Self::AdminDeleteAwaitingTarget),
             "admin_token_revoke_awaiting_token" => Some(Self::AdminTokenRevokeAwaitingToken),
-            "admin_token_create:auto" => Some(Self::AdminTokenCreateAwaitingParams {
-                auto_approve: true,
-            }),
+            "admin_token_create:auto" => {
+                Some(Self::AdminTokenCreateAwaitingParams { auto_approve: true })
+            }
             "admin_token_create:manual" => Some(Self::AdminTokenCreateAwaitingParams {
                 auto_approve: false,
             }),
@@ -78,7 +81,10 @@ pub fn is_admin_message(msg: &Message, state: &BotState) -> bool {
     sender_user_id(msg).is_some_and(|user_id| state.config.is_admin(user_id))
 }
 
-pub async fn wizard_state(state: &BotState, user_id: i64) -> Result<Option<WizardState>, anyhow::Error> {
+pub async fn wizard_state(
+    state: &BotState,
+    user_id: i64,
+) -> Result<Option<WizardState>, anyhow::Error> {
     let Some(state_key) = state.db.get_wizard_state(user_id).await? else {
         return Ok(None);
     };

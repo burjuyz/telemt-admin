@@ -34,10 +34,12 @@ impl ServiceAction {
 pub enum CallbackAction {
     ShowAdminHome,
     ShowUserHome,
+    ShowUserLink,
     ShowUsageGuide,
     PromptInviteToken,
     CancelWizard,
     ShowPendingRequests,
+    OpenPendingRequest { request_id: i64 },
     ShowUsersPage { page: i64 },
     OpenUserCard { tg_user_id: i64, page: i64 },
     ViewUserQr { tg_user_id: i64 },
@@ -63,10 +65,14 @@ impl CallbackAction {
         match self {
             Self::ShowAdminHome => "v1|admin|home".to_string(),
             Self::ShowUserHome => "v1|user|home".to_string(),
+            Self::ShowUserLink => "v1|user|link".to_string(),
             Self::ShowUsageGuide => "v1|user|guide".to_string(),
             Self::PromptInviteToken => "v1|user|invite".to_string(),
             Self::CancelWizard => "v1|wizard|cancel".to_string(),
             Self::ShowPendingRequests => "v1|admin|pending".to_string(),
+            Self::OpenPendingRequest { request_id } => {
+                format!("v1|admin|pending|open|{request_id}")
+            }
             Self::ShowUsersPage { page } => format!("v1|admin|users|page|{page}"),
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
@@ -112,10 +118,14 @@ impl CallbackAction {
         match parts.as_slice() {
             ["v1", "admin", "home"] => Some(Self::ShowAdminHome),
             ["v1", "user", "home"] => Some(Self::ShowUserHome),
+            ["v1", "user", "link"] => Some(Self::ShowUserLink),
             ["v1", "user", "guide"] => Some(Self::ShowUsageGuide),
             ["v1", "user", "invite"] => Some(Self::PromptInviteToken),
             ["v1", "wizard", "cancel"] => Some(Self::CancelWizard),
             ["v1", "admin", "pending"] => Some(Self::ShowPendingRequests),
+            ["v1", "admin", "pending", "open", request_id] => Some(Self::OpenPendingRequest {
+                request_id: parse_i64(request_id)?,
+            }),
             ["v1", "admin", "users", "page", page] => Some(Self::ShowUsersPage {
                 page: parse_i64(page)?.max(1),
             }),

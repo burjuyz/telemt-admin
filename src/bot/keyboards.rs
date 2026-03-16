@@ -19,9 +19,19 @@ pub fn approve_reject_buttons(request_id: i64) -> InlineKeyboardMarkup {
 pub fn user_home_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("🔑 Ввести invite-токен", CallbackAction::PromptInviteToken.encode()),
-            InlineKeyboardButton::callback("❓ Инструкция", CallbackAction::ShowUsageGuide.encode()),
+            InlineKeyboardButton::callback(
+                "🔑 Ввести invite-токен",
+                CallbackAction::PromptInviteToken.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "❓ Инструкция",
+                CallbackAction::ShowUsageGuide.encode(),
+            ),
         ],
+        vec![InlineKeyboardButton::callback(
+            "🔗 Получить ссылку",
+            CallbackAction::ShowUserLink.encode(),
+        )],
         vec![InlineKeyboardButton::callback(
             "🔄 Обновить статус",
             CallbackAction::ShowUserHome.encode(),
@@ -39,8 +49,14 @@ pub fn guide_keyboard() -> InlineKeyboardMarkup {
 pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("📥 Заявки", CallbackAction::ShowPendingRequests.encode()),
-            InlineKeyboardButton::callback("👥 Пользователи", CallbackAction::ShowUsersPage { page: 1 }.encode()),
+            InlineKeyboardButton::callback(
+                "📥 Заявки",
+                CallbackAction::ShowPendingRequests.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "👥 Пользователи",
+                CallbackAction::ShowUsersPage { page: 1 }.encode(),
+            ),
         ],
         vec![
             InlineKeyboardButton::callback("🎟 Токены", CallbackAction::ShowTokenMenu.encode()),
@@ -52,8 +68,65 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
         ],
         vec![
             InlineKeyboardButton::callback("📊 Статистика", CallbackAction::ShowStats.encode()),
-            InlineKeyboardButton::callback("↩️ Главный экран", CallbackAction::ShowAdminHome.encode()),
+            InlineKeyboardButton::callback(
+                "↩️ Главный экран",
+                CallbackAction::ShowAdminHome.encode(),
+            ),
         ],
+    ])
+}
+
+pub fn pending_requests_keyboard(requests: &[(i64, String)]) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = requests
+        .iter()
+        .map(|(request_id, title)| {
+            vec![InlineKeyboardButton::callback(
+                title.clone(),
+                CallbackAction::OpenPendingRequest {
+                    request_id: *request_id,
+                }
+                .encode(),
+            )]
+        })
+        .collect();
+
+    rows.push(vec![
+        InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowPendingRequests.encode()),
+        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
+    ]);
+
+    InlineKeyboardMarkup::new(rows)
+}
+
+pub fn pending_request_card_keyboard(request_id: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "✅ Одобрить",
+                CallbackAction::ApproveRequest { request_id }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "❌ Отклонить",
+                CallbackAction::RejectRequest { request_id }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад к заявкам",
+            CallbackAction::ShowPendingRequests.encode(),
+        )],
+    ])
+}
+
+pub fn pending_result_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![InlineKeyboardButton::callback(
+            "⬅️ К заявкам",
+            CallbackAction::ShowPendingRequests.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "🏠 Главная",
+            CallbackAction::ShowAdminHome.encode(),
+        )],
     ])
 }
 
@@ -205,6 +278,26 @@ pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
+pub fn token_list_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowTokenList.encode()),
+            InlineKeyboardButton::callback("⬅️ Назад", CallbackAction::ShowTokenMenu.encode()),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "🏠 Главная",
+            CallbackAction::ShowAdminHome.encode(),
+        )],
+    ])
+}
+
+pub fn stats_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowStats.encode()),
+        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
+    ]])
+}
+
 pub fn cancel_keyboard(back_action: CallbackAction) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![vec![
         InlineKeyboardButton::callback("⬅️ Назад", back_action.encode()),
@@ -213,28 +306,24 @@ pub fn cancel_keyboard(back_action: CallbackAction) -> InlineKeyboardMarkup {
 }
 
 pub fn confirm_delete_keyboard(tg_user_id: i64) -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback(
-                "✅ Да, удалить",
-                CallbackAction::ExecuteDeleteUser { tg_user_id }.encode(),
-            ),
-            InlineKeyboardButton::callback("✖️ Отмена", CallbackAction::ShowAdminHome.encode()),
-        ],
-    ])
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "✅ Да, удалить",
+            CallbackAction::ExecuteDeleteUser { tg_user_id }.encode(),
+        ),
+        InlineKeyboardButton::callback("✖️ Отмена", CallbackAction::ShowAdminHome.encode()),
+    ]])
 }
 
 pub fn confirm_user_ban_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback(
-                "✅ Подтвердить",
-                CallbackAction::ExecuteUserBan { tg_user_id, page }.encode(),
-            ),
-            InlineKeyboardButton::callback(
-                "⬅️ Назад",
-                CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
-            ),
-        ],
-    ])
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "✅ Подтвердить",
+            CallbackAction::ExecuteUserBan { tg_user_id, page }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
+        ),
+    ]])
 }
