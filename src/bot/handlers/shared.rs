@@ -101,6 +101,13 @@ pub fn build_bot_start_link(bot_username: &str, token: &str) -> String {
     format!("https://t.me/{}?start={}", normalized, token)
 }
 
+fn reload_telemt_after_config_change(state: &BotState) {
+    let reload = state.service.notify_config_reloaded();
+    if !reload.success {
+        tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
+    }
+}
+
 pub async fn mark_user_waiting_for_invite(state: &BotState, tg_user_id: i64) {
     state.awaiting_invite_users.lock().await.insert(tg_user_id);
 }
@@ -233,6 +240,7 @@ pub async fn approve_request_and_build_link(
     let user_secret = generate_user_secret();
 
     state.telemt_cfg.upsert_user(&telemt_user, &user_secret)?;
+    reload_telemt_after_config_change(state);
     if state
         .db
         .approve(request_id, &telemt_user, &user_secret)
@@ -256,6 +264,7 @@ pub async fn approve_user_direct_and_build_link(
     let telemt_user = telemt_username(tg_user_id);
     let secret = generate_user_secret();
     state.telemt_cfg.upsert_user(&telemt_user, &secret)?;
+    reload_telemt_after_config_change(state);
     state
         .db
         .set_approved(
@@ -432,6 +441,9 @@ pub async fn require_admin_callback(
 pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     let removed_from_cfg = state.telemt_cfg.remove_user(&telemt_user)?;
+    if removed_from_cfg {
+        reload_telemt_after_config_change(state);
+    }
     let removed_from_db = state.db.deactivate_user(tg_user_id).await?;
 
     if removed_from_cfg || removed_from_db {
