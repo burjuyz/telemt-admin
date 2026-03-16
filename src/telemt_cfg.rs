@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Mutex;
-use toml_edit::{DocumentMut, Item};
+use toml_edit::{DocumentMut, Item, Table};
 
 /// Параметры для генерации ссылки (host, port, tls_domain).
 #[derive(Debug, Clone)]
@@ -107,15 +107,23 @@ impl TelemtConfig {
             .parse()
             .map_err(|e| anyhow::anyhow!("Ошибка парсинга TOML: {}", e))?;
 
+        if doc.get("access").is_none() {
+            doc["access"] = Item::Table(Table::new());
+        }
+
         let access = doc
             .get_mut("access")
             .and_then(|a| a.as_table_mut())
-            .ok_or_else(|| anyhow::anyhow!("Секция [access] не найдена"))?;
+            .ok_or_else(|| anyhow::anyhow!("Секция [access] имеет неверный тип"))?;
+
+        if access.get("users").is_none() {
+            access["users"] = Item::Table(Table::new());
+        }
 
         let users = access
             .get_mut("users")
             .and_then(|u| u.as_table_mut())
-            .ok_or_else(|| anyhow::anyhow!("Секция [access.users] не найдена"))?;
+            .ok_or_else(|| anyhow::anyhow!("Секция [access.users] имеет неверный тип"))?;
 
         users[username] = Item::Value(toml_edit::Value::from(secret));
 
