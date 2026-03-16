@@ -1,8 +1,8 @@
 //! Проверка и автообновление из GitHub Releases.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
 use semver::Version;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 
@@ -34,9 +34,8 @@ const ASSET_LINUX_X86_64: &str = "telemt-admin-linux-x86_64.tar.gz";
 const ASSET_WINDOWS_X86_64: &str = "telemt-admin-windows-x86_64.zip";
 
 fn current_version() -> Version {
-    Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| {
-        Version::parse("0.0.0").expect("fallback version")
-    })
+    Version::parse(env!("CARGO_PKG_VERSION"))
+        .unwrap_or_else(|_| Version::parse("0.0.0").expect("fallback version"))
 }
 
 fn parse_tag_version(tag: &str) -> Option<Version> {
@@ -105,10 +104,7 @@ pub async fn run_check_update() -> Result<()> {
     let latest = match parse_tag_version(&release.tag_name) {
         Some(v) => v,
         None => {
-            eprintln!(
-                "Не удалось распарсить версию из тега: {}",
-                release.tag_name
-            );
+            eprintln!("Не удалось распарсить версию из тега: {}", release.tag_name);
             return Ok(());
         }
     };
@@ -173,7 +169,10 @@ pub async fn run_self_update() -> Result<()> {
     let latest = parse_tag_version(&release.tag_name)
         .context("Не удалось распарсить версию из тега релиза")?;
     if latest <= current {
-        println!("Установлена актуальная версия {}. Обновление не требуется.", current);
+        println!(
+            "Установлена актуальная версия {}. Обновление не требуется.",
+            current
+        );
         return Ok(());
     }
 
@@ -222,9 +221,9 @@ pub async fn run_self_update() -> Result<()> {
 
     let mut archive = flate2::read::GzDecoder::new(archive_bytes.as_ref());
     let mut tar = tar::Archive::new(&mut archive);
-    let temp_dir = tempfile::tempdir_in(exe_dir).context("Не удалось создать временную директорию (проверьте права на запись)")?;
-    tar.unpack(temp_dir.path())
-        .context("Распаковка архива")?;
+    let temp_dir = tempfile::tempdir_in(exe_dir)
+        .context("Не удалось создать временную директорию (проверьте права на запись)")?;
+    tar.unpack(temp_dir.path()).context("Распаковка архива")?;
 
     let extracted_binary = temp_dir.path().join("telemt-admin");
     if !extracted_binary.exists() {

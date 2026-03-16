@@ -270,9 +270,9 @@ impl Db {
 
         let existing_sql = format!("{} WHERE tg_user_id = ?", SELECT_REQUEST);
         let existing = sqlx::query_as::<_, RegistrationRequest>(&existing_sql)
-        .bind(tg_user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(tg_user_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         if let Some(r) = existing {
             return match r.status {
@@ -321,11 +321,14 @@ impl Db {
         &self,
         tg_user_id: i64,
     ) -> Result<Option<RegistrationRequest>, anyhow::Error> {
-        let sql = format!("{} WHERE tg_user_id = ? AND status = '{}'", SELECT_REQUEST, STATUS_PENDING);
+        let sql = format!(
+            "{} WHERE tg_user_id = ? AND status = '{}'",
+            SELECT_REQUEST, STATUS_PENDING
+        );
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(tg_user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(tg_user_id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(r)
     }
 
@@ -334,11 +337,14 @@ impl Db {
         &self,
         id: i64,
     ) -> Result<Option<RegistrationRequest>, anyhow::Error> {
-        let sql = format!("{} WHERE id = ? AND status = '{}'", SELECT_REQUEST, STATUS_PENDING);
+        let sql = format!(
+            "{} WHERE id = ? AND status = '{}'",
+            SELECT_REQUEST, STATUS_PENDING
+        );
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(r)
     }
 
@@ -351,11 +357,14 @@ impl Db {
     ) -> Result<Option<RegistrationRequest>, anyhow::Error> {
         let now = current_unix_timestamp()?;
 
-        let sql = format!("{} WHERE id = ? AND status = '{}'", SELECT_REQUEST, STATUS_PENDING);
+        let sql = format!(
+            "{} WHERE id = ? AND status = '{}'",
+            SELECT_REQUEST, STATUS_PENDING
+        );
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let req = match r {
             Some(req) => req,
@@ -379,11 +388,14 @@ impl Db {
     pub async fn reject(&self, id: i64) -> Result<Option<RegistrationRequest>, anyhow::Error> {
         let now = current_unix_timestamp()?;
 
-        let sql = format!("{} WHERE id = ? AND status = '{}'", SELECT_REQUEST, STATUS_PENDING);
+        let sql = format!(
+            "{} WHERE id = ? AND status = '{}'",
+            SELECT_REQUEST, STATUS_PENDING
+        );
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let req = r.clone();
         if r.is_some() {
@@ -477,9 +489,9 @@ impl Db {
             SELECT_REQUEST, STATUS_APPROVED
         );
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(tg_user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(tg_user_id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(r.and_then(|x| x.telemt_username.zip(x.secret)))
     }
 
@@ -489,9 +501,9 @@ impl Db {
     ) -> Result<Option<RegistrationRequest>, anyhow::Error> {
         let sql = format!("{} WHERE tg_user_id = ?", SELECT_REQUEST);
         let r = sqlx::query_as::<_, RegistrationRequest>(&sql)
-        .bind(tg_user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            .bind(tg_user_id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(r)
     }
 
@@ -758,10 +770,7 @@ impl Db {
         })
     }
 
-    pub async fn get_wizard_state(
-        &self,
-        tg_user_id: i64,
-    ) -> Result<Option<String>, anyhow::Error> {
+    pub async fn get_wizard_state(&self, tg_user_id: i64) -> Result<Option<String>, anyhow::Error> {
         let row = sqlx::query_as::<_, (String, i64)>(
             "SELECT state_key, updated_at
              FROM bot_wizard_states

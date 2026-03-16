@@ -56,9 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "Configuration loaded"
     );
 
-    let db = Arc::new(
-        db::Db::open(&config.db_path, config.security.wizard_state_ttl_seconds).await?,
-    );
+    let db =
+        Arc::new(db::Db::open(&config.db_path, config.security.wizard_state_ttl_seconds).await?);
     let telemt_cfg = Arc::new(telemt_cfg::TelemtConfig::new(&config.telemt_config_path));
     let service = service::ServiceController::new(&config.service_name);
 
@@ -74,7 +73,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
-    if let Err(error) = bot.set_my_commands(bot::handlers::telegram_commands()).await {
+    if let Err(error) = bot
+        .set_my_commands(bot::handlers::telegram_commands())
+        .await
+    {
         tracing::warn!(error = %error, "Не удалось обновить список slash-команд бота");
     }
 
