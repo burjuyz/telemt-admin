@@ -1,12 +1,18 @@
+use super::callback_data::CallbackAction;
 use super::format::{format_date, format_mode, render_invite_token_line};
-use super::shared::{
-    admin_show_pending, admin_show_service_panel, admin_show_stats, admin_show_users_page,
-    approve_request_and_build_link, approve_user_direct_and_build_link, build_bot_start_link,
-    is_user_waiting_for_invite, mark_user_waiting_for_invite, parse_create_target, parse_start_token,
-    perform_hard_ban, process_invite_token, send_user_link, unmark_user_waiting_for_invite,
-    user_id_or_reply, CreateTarget, HandlerResult,
+use super::screens::{
+    admin_show_service_panel, show_admin_home, show_delete_user_confirm, show_token_menu,
+    show_user_home, send_text_with_keyboard_removed,
 };
-use super::state::{is_admin_message, sender_display_name, sender_user_id, telemt_username, BotState};
+use super::shared::{
+    approve_request_and_build_link, approve_user_direct_and_build_link, build_bot_start_link,
+    parse_create_target, parse_start_token, process_invite_token, send_user_link, user_id_or_reply,
+    CreateTarget, HandlerResult,
+};
+use super::state::{
+    clear_wizard_state, is_admin_message, sender_display_name, sender_user_id, set_wizard_state,
+    telemt_username, BotState, WizardState,
+};
 use crate::db::RequestStatus;
 use teloxide::dptree;
 use teloxide::prelude::*;
@@ -16,7 +22,7 @@ use teloxide::utils::command::BotCommands;
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
 pub enum BotCommand {
-    #[command(description = "Зарегистрироваться")]
+    #[command(description = "Главный экран / регистрация")]
     Start,
     #[command(description = "Получить ссылку на прокси")]
     Link,
@@ -36,17 +42,56 @@ pub enum BotCommand {
     Token,
 }
 
+pub fn telegram_commands() -> Vec<teloxide::types::BotCommand> {
+    BotCommand::bot_commands()
+}
+
 pub fn handler() -> teloxide::dispatching::UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
-    teloxide::filter_command::<BotCommand, _>()
-        .branch(dptree::case![BotCommand::Start].endpoint(start_cmd))
-        .branch(dptree::case![BotCommand::Link].endpoint(cmd_link))
-        .branch(dptree::case![BotCommand::Help].endpoint(cmd_help))
-        .branch(dptree::case![BotCommand::Approve].endpoint(cmd_approve))
-        .branch(dptree::case![BotCommand::Reject].endpoint(cmd_reject))
-        .branch(dptree::case![BotCommand::Create].endpoint(cmd_create))
-        .branch(dptree::case![BotCommand::Delete].endpoint(cmd_delete))
-        .branch(dptree::case![BotCommand::Service].endpoint(cmd_service))
-        .branch(dptree::case![BotCommand::Token].endpoint(cmd_token))
+    dptree::filter(|msg: Message| {
+        msg.text()
+            .is_some_and(|text| text.trim_start().starts_with('/'))
+    })
+    .endpoint(handle_command_message)
+}
+
+fn extract_command_name<'a>(text: &'a str, bot_username: Option<&str>) -> Option<&'a str> {
+    let command = text.split_whitespace().next()?.strip_prefix('/')?;
+    let (name, mentioned_bot) = command.split_once('@').map_or((command, None), |(name, bot)| {
+        (name, Some(bot))
+    });
+    if let (Some(mentioned_bot), Some(bot_username)) = (mentioned_bot, bot_username) {
+        let bot_username = bot_username.trim_start_matches('@');
+        if !mentioned_bot.eq_ignore_ascii_case(bot_username) {
+            return None;
+        }
+    }
+    Some(name)
+}
+
+async fn handle_command_message(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
+    let Some(text) = msg.text() else {
+        return Ok(());
+    };
+    let Some(command_name) = extract_command_name(text, state.bot_username.as_deref()) else {
+        return Ok(());
+    };
+
+    match command_name {
+        "start" => start_cmd(bot, msg, state).await,
+        "link" => cmd_link(bot, msg, state).await,
+        "help" => cmd_help(bot, msg, state).await,
+        "approve" => cmd_approve(bot, msg, state).await,
+        "reject" => cmd_reject(bot, msg, state).await,
+        "create" => cmd_create(bot, msg, state).await,
+        "delete" => cmd_delete(bot, msg, state).await,
+        "service" => cmd_service(bot, msg, state).await,
+        "token" => cmd_token(bot, msg, state).await,
+        _ => {
+            bot.send_message(msg.chat.id, "Неизвестная команда. Используйте /help.")
+                .await?;
+            Ok(())
+        }
+    }
 }
 
 pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
@@ -54,27 +99,29 @@ pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult 
         return Ok(());
     };
     let is_admin = state.config.is_admin(user_id);
-    let text = r#"Команды:
-/start — зарегистрироваться (заявка на подтверждение админу)
-/link — получить ссылку на прокси (если уже одобрены)
+    let text = if is_admin {
+        r#"Команды:
+/start — открыть главный экран администратора
+/help — показать эту справку
+/service — открыть панель управления сервисом
+/token — открыть мастер invite-токенов
+/create — запустить создание пользователя
+/delete — запустить удаление пользователя
+/approve <id> — быстро одобрить заявку
+/reject <id> — быстро отклонить заявку
 
-Для администраторов:
-/approve <id> — одобрить заявку
-/reject <id> — отклонить заявку
-/create <tg_user_id | @username> — создать пользователя
-/delete <tg_user_id> — удалить пользователя
-/service <start|stop|status|reload|restart> — ручное управление telemt.service
-/token create [days] [--auto|-a] [--max-uses N] — создать invite-токен
-/token list — список активных invite-токенов
-/token revoke <token> — отозвать invite-токен"#;
-    let reply_markup = if is_admin {
-        crate::bot::keyboards::admin_menu()
+Подсказка:
+- сложные сценарии запускаются через slash-команды и продолжаются inline-кнопками;
+- старые аргументы `/service ...` и `/token ...` по-прежнему поддерживаются."#
     } else {
-        crate::bot::keyboards::user_menu()
+        r#"Команды:
+/start — начать регистрацию или открыть главный экран
+/link — получить ссылку на прокси
+/help — показать справку
+
+Дальше бот сам подскажет, какой шаг нужен: ввести invite-токен, дождаться одобрения или забрать ссылку."#
     };
-    bot.send_message(msg.chat.id, text)
-        .reply_markup(reply_markup)
-        .await?;
+    send_text_with_keyboard_removed(&bot, msg.chat.id, text).await?;
     Ok(())
 }
 
@@ -96,50 +143,15 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     );
 
     if state.config.is_admin(user_id) {
-        bot.send_message(
+        clear_wizard_state(&state, user_id).await?;
+        send_text_with_keyboard_removed(
+            &bot,
             msg.chat.id,
-            "Добро пожаловать в панель администратора. Используйте кнопки ниже.",
+            "Постоянное меню отключено. Используйте slash-команды и inline-кнопки.",
         )
-        .reply_markup(crate::bot::keyboards::admin_menu())
         .await?;
+        show_admin_home(&bot, msg.chat.id, None).await?;
         return Ok(());
-    }
-
-    if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
-        match existing.status {
-            RequestStatus::Approved => {
-                if let Some(secret) = existing.secret {
-                    let params = state.telemt_cfg.read_link_params()?;
-                    let link = crate::link::build_proxy_link(&params, &secret)?;
-                    bot.send_message(msg.chat.id, format!("Ваша ссылка на прокси:\n\n{}", link))
-                        .reply_markup(crate::bot::keyboards::user_menu())
-                        .await?;
-                    unmark_user_waiting_for_invite(&state, user_id).await;
-                    return Ok(());
-                }
-            }
-            RequestStatus::Pending => {
-                bot.send_message(
-                    msg.chat.id,
-                    "Ваша заявка уже на рассмотрении. Ожидайте подтверждения администратора.",
-                )
-                .reply_markup(crate::bot::keyboards::user_menu())
-                .await?;
-                unmark_user_waiting_for_invite(&state, user_id).await;
-                return Ok(());
-            }
-            RequestStatus::Rejected => {
-                bot.send_message(
-                    msg.chat.id,
-                    "Ваша заявка на регистрацию отклонена администратором.",
-                )
-                .reply_markup(crate::bot::keyboards::user_menu())
-                .await?;
-                unmark_user_waiting_for_invite(&state, user_id).await;
-                return Ok(());
-            }
-            RequestStatus::Deleted => {}
-        }
     }
 
     let text = msg.text().unwrap_or("");
@@ -157,12 +169,32 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         return Ok(());
     }
 
-    mark_user_waiting_for_invite(&state, user_id).await;
+    send_text_with_keyboard_removed(
+        &bot,
+        msg.chat.id,
+        "Постоянное меню отключено. Используйте slash-команды и inline-кнопки.",
+    )
+    .await?;
+
+    if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
+        clear_wizard_state(&state, user_id).await?;
+        match existing.status {
+            RequestStatus::Approved | RequestStatus::Pending | RequestStatus::Rejected => {
+                show_user_home(&bot, msg.chat.id, None, &state, user_id).await?;
+                return Ok(());
+            }
+            RequestStatus::Deleted => {}
+        }
+    }
+
+    set_wizard_state(&state, user_id, WizardState::AwaitingInviteToken).await?;
     bot.send_message(
         msg.chat.id,
-        "Введите пригласительный токен для подачи заявки на доступ.",
+        "Введите пригласительный токен следующим сообщением.\n\nЕсли передумали, нажмите «Отмена».",
     )
-    .reply_markup(crate::bot::keyboards::user_menu())
+    .reply_markup(crate::bot::keyboards::cancel_keyboard(
+        CallbackAction::ShowUserHome,
+    ))
     .await?;
     Ok(())
 }
@@ -171,9 +203,19 @@ async fn cmd_link(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     let Some(user_id) = sender_user_id(&msg) else {
         return Ok(());
     };
+    let username = msg.from.as_ref().and_then(|u| u.username.as_deref());
+    let display_name = sender_display_name(&msg);
     tracing::info!(user_id = user_id, "Received /link command");
 
-    send_user_link(&bot, msg.chat.id, user_id, &state).await
+    send_user_link(
+        &bot,
+        msg.chat.id,
+        user_id,
+        username,
+        display_name.as_deref(),
+        &state,
+    )
+    .await
 }
 
 async fn cmd_approve(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
@@ -252,44 +294,23 @@ async fn cmd_create(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
 
     let text = msg.text().unwrap_or("");
     let arg = text.split_whitespace().nth(1).unwrap_or("");
-    let tg_user_id: i64 = match parse_create_target(arg) {
-        Some(CreateTarget::UserId(id)) => id,
-        Some(CreateTarget::Username(username)) => {
-            match state.db.find_tg_user_id_by_username(&username).await? {
-                Some(user_id) => user_id,
-                None => {
-                    bot.send_message(
-                        msg.chat.id,
-                        format!(
-                            "Пользователь @{} не найден в базе.\n\
-                             Он должен хотя бы раз отправить боту /start.",
-                            username
-                        ),
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-        None => {
-            bot.send_message(
-                msg.chat.id,
-                "Использование: /create <telegram_user_id | @username>",
-            )
-            .await?;
-            return Ok(());
-        }
-    };
-    tracing::info!(tg_user_id = tg_user_id, "Admin command /create");
+    let user_id = sender_user_id(&msg).unwrap_or_default();
+    if arg.is_empty() {
+        clear_wizard_state(&state, user_id).await?;
+        set_wizard_state(&state, user_id, WizardState::AdminCreateAwaitingTarget).await?;
+        bot.send_message(
+            msg.chat.id,
+            "Отправьте Telegram ID или @username следующим сообщением.\n\n\
+Для варианта с @username пользователь должен раньше написать боту /start.",
+        )
+        .reply_markup(crate::bot::keyboards::cancel_keyboard(
+            CallbackAction::ShowAdminHome,
+        ))
+        .await?;
+        return Ok(());
+    }
 
-    let telemt_user = telemt_username(tg_user_id);
-    let link = approve_user_direct_and_build_link(&state, tg_user_id, None, None).await?;
-
-    bot.send_message(
-        msg.chat.id,
-        format!("Пользователь {} создан.\nСсылка:\n{}", telemt_user, link),
-    )
-    .await?;
+    let _ = create_user_from_input(&bot, msg.chat.id, &state, arg).await?;
     Ok(())
 }
 
@@ -299,18 +320,28 @@ async fn cmd_delete(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     }
 
     let text = msg.text().unwrap_or("");
-    let tg_user_id: i64 = match text.split_whitespace().nth(1).unwrap_or("").parse() {
-        Ok(id) => id,
-        Err(_) => {
-            bot.send_message(msg.chat.id, "Использование: /delete <telegram_user_id>")
-                .await?;
-            return Ok(());
+    let user_id = sender_user_id(&msg).unwrap_or_default();
+    match text.split_whitespace().nth(1) {
+        Some(arg) => match arg.parse::<i64>() {
+            Ok(tg_user_id) => show_delete_user_confirm(&bot, msg.chat.id, tg_user_id).await?,
+            Err(_) => {
+                bot.send_message(msg.chat.id, "Использование: /delete <telegram_user_id>")
+                    .await?;
+            }
+        },
+        None => {
+            clear_wizard_state(&state, user_id).await?;
+            set_wizard_state(&state, user_id, WizardState::AdminDeleteAwaitingTarget).await?;
+            bot.send_message(
+                msg.chat.id,
+                "Отправьте Telegram ID пользователя, которого нужно удалить.",
+            )
+            .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                CallbackAction::ShowAdminHome,
+            ))
+            .await?;
         }
-    };
-    tracing::info!(tg_user_id = tg_user_id, "Admin command /delete");
-
-    let status_text = perform_hard_ban(&state, tg_user_id).await?;
-    bot.send_message(msg.chat.id, status_text).await?;
+    }
     Ok(())
 }
 
@@ -321,27 +352,30 @@ async fn cmd_service(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
 
     let text = msg.text().unwrap_or("");
     let args: Vec<&str> = text.split_whitespace().collect();
-    let action = args.get(1).copied().unwrap_or("status");
-    tracing::info!(action = action, "Admin command /service");
+    if let Some(action) = args.get(1).copied() {
+        tracing::info!(action = action, "Admin command /service legacy action");
+        let (action_name, result) = match action {
+            "start" => ("start", state.service.start()),
+            "stop" => ("stop", state.service.stop()),
+            "restart" => ("restart", state.service.restart()),
+            "reload" => ("reload", state.service.reload()),
+            "status" => ("status", state.service.status()),
+            _ => {
+                bot.send_message(
+                    msg.chat.id,
+                    "Использование: /service <start|stop|status|reload|restart>",
+                )
+                .await?;
+                return Ok(());
+            }
+        };
 
-    let (action_name, result) = match action {
-        "start" => ("start", state.service.start()),
-        "stop" => ("stop", state.service.stop()),
-        "restart" => ("restart", state.service.restart()),
-        "reload" => ("reload", state.service.reload()),
-        "status" => ("status", state.service.status()),
-        _ => {
-            bot.send_message(
-                msg.chat.id,
-                "Использование: /service <start|stop|status|reload|restart>",
-            )
-            .await?;
-            return Ok(());
-        }
-    };
+        let reply = state.service.format_result(action_name, &result);
+        bot.send_message(msg.chat.id, reply).await?;
+        return Ok(());
+    }
 
-    let reply = state.service.format_result(action_name, &result);
-    bot.send_message(msg.chat.id, reply).await?;
+    admin_show_service_panel(&bot, msg.chat.id, &state, None).await?;
     Ok(())
 }
 
@@ -352,12 +386,13 @@ async fn cmd_token(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
 
     let text = msg.text().unwrap_or("");
     let args: Vec<&str> = text.split_whitespace().collect();
+    if args.len() == 1 {
+        show_token_menu(&bot, msg.chat.id, None, &state).await?;
+        return Ok(());
+    }
+
     let Some(subcommand) = args.get(1).copied() else {
-        bot.send_message(
-            msg.chat.id,
-            "Использование:\n/token create [days] [--auto|-a] [--max-uses N]\n/token list\n/token revoke <token>",
-        )
-        .await?;
+        show_token_menu(&bot, msg.chat.id, None, &state).await?;
         return Ok(());
     };
 
@@ -529,45 +564,187 @@ async fn cmd_token(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     Ok(())
 }
 
-pub async fn admin_show_pending_cmd(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    admin_show_pending(bot, chat_id, state).await
-}
-
-pub async fn admin_show_users_cmd(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    admin_show_users_page(bot, chat_id, state, 1, None).await
-}
-
-pub async fn admin_show_service_cmd(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    admin_show_service_panel(bot, chat_id, state).await
-}
-
-pub async fn admin_show_stats_cmd(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    admin_show_stats(bot, chat_id, state).await
-}
-
-pub async fn try_process_waiting_invite(
+pub async fn create_user_from_input(
     bot: &Bot,
-    msg: &Message,
+    chat_id: ChatId,
     state: &BotState,
-    user_id: i64,
+    arg: &str,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    if !state.config.is_admin(user_id)
-        && !msg.text().unwrap_or("").starts_with('/')
-        && is_user_waiting_for_invite(state, user_id).await
-    {
-        let username = msg.from.as_ref().and_then(|u| u.username.clone());
-        let display_name = sender_display_name(msg);
-        process_invite_token(
-            bot,
-            msg,
-            state,
-            user_id,
-            username.as_deref(),
-            display_name.as_deref(),
-            msg.text().unwrap_or("").trim(),
+    let tg_user_id: i64 = match parse_create_target(arg) {
+        Some(CreateTarget::UserId(id)) => id,
+        Some(CreateTarget::Username(username)) => {
+            match state.db.find_tg_user_id_by_username(&username).await? {
+                Some(user_id) => user_id,
+                None => {
+                    bot.send_message(
+                        chat_id,
+                        format!(
+                            "Пользователь @{} не найден в базе.\n\
+                             Он должен хотя бы раз отправить боту /start.",
+                            username
+                        ),
+                    )
+                    .await?;
+                    return Ok(false);
+                }
+            }
+        }
+        None => {
+            bot.send_message(chat_id, "Использование: ID или @username").await?;
+            return Ok(false);
+        }
+    };
+    tracing::info!(tg_user_id = tg_user_id, "Admin create user");
+
+    let telemt_user = telemt_username(tg_user_id);
+    let link = approve_user_direct_and_build_link(state, tg_user_id, None, None).await?;
+
+    bot.send_message(
+        chat_id,
+        format!("Пользователь {} создан.\nСсылка:\n{}", telemt_user, link),
+    )
+    .await?;
+    Ok(true)
+}
+
+pub async fn prompt_delete_confirmation(
+    bot: &Bot,
+    chat_id: ChatId,
+    arg: &str,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    match arg.trim().parse::<i64>() {
+        Ok(tg_user_id) => {
+            show_delete_user_confirm(bot, chat_id, tg_user_id).await?;
+            Ok(true)
+        }
+        Err(_) => {
+            bot.send_message(chat_id, "Нужен корректный Telegram ID пользователя.")
+                .await?;
+            Ok(false)
+        }
+    }
+}
+
+pub async fn handle_token_create_from_text(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    auto_approve: bool,
+    text: &str,
+    created_by: Option<i64>,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let security = &state.config.security;
+    if auto_approve && !security.allow_auto_approve_tokens {
+        bot.send_message(
+            chat_id,
+            "Автоподтверждение токенов запрещено в конфигурации.",
         )
         .await?;
-        return Ok(true);
+        return Ok(false);
     }
-    Ok(false)
+
+    let mut days: Option<i64> = None;
+    let mut max_uses: Option<i64> = None;
+    let args: Vec<&str> = text.split_whitespace().collect();
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index] {
+            "--max-uses" => {
+                let Some(value) = args.get(index + 1) else {
+                    bot.send_message(
+                        chat_id,
+                        "Формат: [days] [--max-uses N]\nНапример: 7 --max-uses 3 или пустое сообщение для значений по умолчанию.",
+                    )
+                    .await?;
+                    return Ok(false);
+                };
+                let parsed = match value.parse::<i64>() {
+                    Ok(parsed) if parsed >= 1 => parsed,
+                    _ => {
+                        bot.send_message(chat_id, "Параметр --max-uses должен быть >= 1.")
+                            .await?;
+                        return Ok(false);
+                    }
+                };
+                max_uses = Some(parsed);
+                index += 2;
+            }
+            value => {
+                if let Ok(parsed_days) = value.parse::<i64>() {
+                    if days.is_some() {
+                        bot.send_message(chat_id, "Срок действия можно указать только один раз.")
+                            .await?;
+                        return Ok(false);
+                    }
+                    days = Some(parsed_days);
+                    index += 1;
+                    continue;
+                }
+                bot.send_message(
+                    chat_id,
+                    "Формат: [days] [--max-uses N]\nНапример: 7 --max-uses 3.",
+                )
+                .await?;
+                return Ok(false);
+            }
+        }
+    }
+
+    let days = days.unwrap_or(security.default_token_days);
+    if days < 1 {
+        bot.send_message(chat_id, "Срок действия должен быть не меньше 1 дня.")
+            .await?;
+        return Ok(false);
+    }
+    if days > security.max_token_days {
+        bot.send_message(
+            chat_id,
+            format!(
+                "Нельзя создать токен на срок больше {} дней.",
+                security.max_token_days
+            ),
+        )
+        .await?;
+        return Ok(false);
+    }
+
+    let token = state
+        .db
+        .create_invite_token(days, auto_approve, max_uses, created_by)
+        .await?;
+
+    let link_line = state
+        .bot_username
+        .as_deref()
+        .map(|bot_username| {
+            let invite_link = build_bot_start_link(bot_username, &token.token);
+            format!("Ссылка: {}\n", invite_link)
+        })
+        .unwrap_or_else(|| {
+            "Ссылка: недоступна (у бота не задан username в Telegram).\n".to_string()
+        });
+
+    let response = format!(
+        "✅ Токен создан:\n\
+         Код: <code>{}</code>\n\
+         {}\
+         Режим: {}\n\
+         Действует до: {}\n\
+         Лимит использований: {}\n\
+         Для отзыва используйте `/token` -> «Отозвать токен» или старую команду <code>/token revoke {}</code>.",
+        token.token,
+        link_line,
+        format_mode(token.auto_approve),
+        format_date(token.expires_at),
+        token
+            .max_usage
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "без лимита".to_string()),
+        token.token
+    );
+    bot.send_message(chat_id, response)
+        .parse_mode(ParseMode::Html)
+        .await?;
+    Ok(true)
 }

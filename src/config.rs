@@ -37,6 +37,7 @@ pub struct SecurityConfig {
     pub max_token_days: i64,
     #[serde(default = "default_allow_auto_approve_tokens")]
     pub allow_auto_approve_tokens: bool,
+    pub wizard_state_ttl_seconds: Option<i64>,
 }
 
 impl Default for SecurityConfig {
@@ -45,6 +46,7 @@ impl Default for SecurityConfig {
             default_token_days: default_token_days(),
             max_token_days: default_max_token_days(),
             allow_auto_approve_tokens: default_allow_auto_approve_tokens(),
+            wizard_state_ttl_seconds: None,
         }
     }
 }
@@ -85,6 +87,13 @@ impl Config {
         })?;
         let config: Config = toml::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Ошибка парсинга конфига: {}", e))?;
+        if let Some(ttl) = config.security.wizard_state_ttl_seconds
+            && ttl <= 0
+        {
+            return Err(anyhow::anyhow!(
+                "security.wizard_state_ttl_seconds должен быть положительным числом секунд"
+            ));
+        }
         tracing::info!(
             admin_count = config.admin_ids.len(),
             telemt_config_path = %config.telemt_config_path.display(),
@@ -94,6 +103,7 @@ impl Config {
             security_default_days = config.security.default_token_days,
             security_max_days = config.security.max_token_days,
             allow_auto_approve_tokens = config.security.allow_auto_approve_tokens,
+            wizard_state_ttl_seconds = ?config.security.wizard_state_ttl_seconds,
             "Config parsed successfully"
         );
         Ok(config)

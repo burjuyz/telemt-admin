@@ -1,5 +1,5 @@
-use super::format::{format_timestamp, user_display_name};
-use super::state::{sender_user_id, telemt_username, BotState};
+use super::format::format_timestamp;
+use super::state::{clear_wizard_state, sender_user_id, telemt_username, BotState};
 use crate::db::{
     ConsumedInviteToken, RegisterResult, RegistrationRequest, TokenConsumeError, TokenMode,
 };
@@ -9,7 +9,7 @@ use image::{DynamicImage, ImageFormat, Luma};
 use qrcode::QrCode;
 use std::io::Cursor;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardMarkup, InputFile};
+use teloxide::types::MessageId;
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -59,40 +59,7 @@ pub fn parse_start_token(text: &str) -> Option<String> {
     }
 }
 
-pub fn parse_callback_request_id(data: &str, prefix: &str) -> Result<i64, anyhow::Error> {
-    data.strip_prefix(prefix)
-        .ok_or_else(|| anyhow!("Некорректный callback payload"))?
-        .parse::<i64>()
-        .map_err(|_| anyhow!("Некорректный request_id"))
-}
-
-pub fn parse_callback_user_action(data: &str, prefix: &str) -> Result<(i64, i64), anyhow::Error> {
-    let payload = data
-        .strip_prefix(prefix)
-        .ok_or_else(|| anyhow!("Некорректный callback payload"))?;
-    let mut parts = payload.split(':');
-    let tg_user_id = parts
-        .next()
-        .ok_or_else(|| anyhow!("Не указан tg_user_id"))?
-        .parse::<i64>()
-        .map_err(|_| anyhow!("Некорректный tg_user_id"))?;
-    let page = parts
-        .next()
-        .ok_or_else(|| anyhow!("Не указан номер страницы"))?
-        .parse::<i64>()
-        .map_err(|_| anyhow!("Некорректный номер страницы"))?;
-    Ok((tg_user_id, page.max(1)))
-}
-
-pub fn parse_callback_page(data: &str, prefix: &str) -> Result<i64, anyhow::Error> {
-    data.strip_prefix(prefix)
-        .ok_or_else(|| anyhow!("Некорректный callback payload"))?
-        .parse::<i64>()
-        .map(|page| page.max(1))
-        .map_err(|_| anyhow!("Некорректный номер страницы"))
-}
-
-pub fn callback_message_target(q: &CallbackQuery) -> Option<(ChatId, teloxide::types::MessageId)> {
+pub fn callback_message_target(q: &CallbackQuery) -> Option<(ChatId, MessageId)> {
     q.message.as_ref().map(|msg| (msg.chat().id, msg.id()))
 }
 
@@ -106,22 +73,6 @@ fn reload_telemt_after_config_change(state: &BotState) {
     if !reload.success {
         tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
     }
-}
-
-pub async fn mark_user_waiting_for_invite(state: &BotState, tg_user_id: i64) {
-    state.awaiting_invite_users.lock().await.insert(tg_user_id);
-}
-
-pub async fn unmark_user_waiting_for_invite(state: &BotState, tg_user_id: i64) {
-    state.awaiting_invite_users.lock().await.remove(&tg_user_id);
-}
-
-pub async fn is_user_waiting_for_invite(state: &BotState, tg_user_id: i64) -> bool {
-    state
-        .awaiting_invite_users
-        .lock()
-        .await
-        .contains(&tg_user_id)
 }
 
 pub async fn notify_auto_approve(
@@ -338,34 +289,30 @@ pub async fn process_invite_token(
                     let params = state.telemt_cfg.read_link_params()?;
                     let link = build_proxy_link(&params, &secret)?;
                     bot.send_message(msg.chat.id, format!("Ваша ссылка на прокси:\n\n{}", link))
-                        .reply_markup(crate::bot::keyboards::user_menu())
                         .await?;
-                    unmark_user_waiting_for_invite(state, tg_user_id).await;
+                    clear_wizard_state(state, tg_user_id).await?;
                 }
                 RegisterResult::Rejected => {
                     bot.send_message(
                         msg.chat.id,
                         "Ваша заявка на регистрацию отклонена администратором.",
                     )
-                    .reply_markup(crate::bot::keyboards::user_menu())
                     .await?;
-                    unmark_user_waiting_for_invite(state, tg_user_id).await;
+                    clear_wizard_state(state, tg_user_id).await?;
                 }
                 RegisterResult::AlreadyPending => {
                     bot.send_message(
                         msg.chat.id,
                         "Ваша заявка уже на рассмотрении. Ожидайте подтверждения администратора.",
                     )
-                    .reply_markup(crate::bot::keyboards::user_menu())
                     .await?;
-                    unmark_user_waiting_for_invite(state, tg_user_id).await;
+                    clear_wizard_state(state, tg_user_id).await?;
                 }
                 RegisterResult::NewPending(ref req) => {
                     bot.send_message(msg.chat.id, "Заявка отправлена. Ожидайте подтверждения.")
-                        .reply_markup(crate::bot::keyboards::user_menu())
                         .await?;
                     notify_admins(bot, state, req).await?;
-                    unmark_user_waiting_for_invite(state, tg_user_id).await;
+                    clear_wizard_state(state, tg_user_id).await?;
                 }
             }
         }
@@ -377,7 +324,6 @@ pub async fn process_invite_token(
                 msg.chat.id,
                 format!("Доступ одобрен! Ваша ссылка для подключения:\n\n{}", link),
             )
-            .reply_markup(crate::bot::keyboards::user_menu())
             .await?;
             notify_auto_approve(
                 bot,
@@ -388,7 +334,7 @@ pub async fn process_invite_token(
                 &consumed,
             )
             .await;
-            unmark_user_waiting_for_invite(state, tg_user_id).await;
+            clear_wizard_state(state, tg_user_id).await?;
         }
     }
 
@@ -399,6 +345,8 @@ pub async fn send_user_link(
     bot: &Bot,
     chat_id: ChatId,
     tg_user_id: i64,
+    tg_username: Option<&str>,
+    tg_display_name: Option<&str>,
     state: &BotState,
 ) -> HandlerResult {
     let maybe = state.db.get_approved(tg_user_id).await?;
@@ -407,16 +355,26 @@ pub async fn send_user_link(
             let params = state.telemt_cfg.read_link_params()?;
             let link = build_proxy_link(&params, &secret)?;
             bot.send_message(chat_id, format!("Ваша ссылка на прокси:\n\n{}", link))
-                .reply_markup(crate::bot::keyboards::user_menu())
                 .await?;
         }
         None => {
-            bot.send_message(
-                chat_id,
-                "У вас нет доступа к прокси. Отправьте /start для регистрации.",
-            )
-            .reply_markup(crate::bot::keyboards::user_menu())
-            .await?;
+            if state.config.is_admin(tg_user_id) {
+                tracing::info!(
+                    tg_user_id = tg_user_id,
+                    "Администратор запросил ссылку без существующей учётной записи, создаём доступ автоматически"
+                );
+                let link =
+                    approve_user_direct_and_build_link(state, tg_user_id, tg_username, tg_display_name)
+                        .await?;
+                bot.send_message(chat_id, format!("Ваша ссылка на прокси:\n\n{}", link))
+                    .await?;
+            } else {
+                bot.send_message(
+                    chat_id,
+                    "У вас нет доступа к прокси. Отправьте /start для регистрации.",
+                )
+                .await?;
+            }
         }
     }
     Ok(())
@@ -450,164 +408,6 @@ pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<Strin
         Ok(format!("Пользователь {} удалён", telemt_user))
     } else {
         Ok(format!("Пользователь {} не найден", telemt_user))
-    }
-}
-
-pub async fn admin_show_pending(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    let pending = state.db.list_pending_requests(10).await?;
-    if pending.is_empty() {
-        bot.send_message(chat_id, "Новых заявок нет.")
-            .reply_markup(crate::bot::keyboards::admin_menu())
-            .await?;
-        return Ok(());
-    }
-
-    bot.send_message(chat_id, format!("Найдено новых заявок: {}", pending.len()))
-        .reply_markup(crate::bot::keyboards::admin_menu())
-        .await?;
-
-    for req in pending {
-        let text = format!(
-            "📋 Заявка #{}:\n\
-             User ID: {}\n\
-             Username: @{}\n\
-             Имя: {}\n\
-             Время: {}",
-            req.id,
-            req.tg_user_id,
-            req.tg_username.as_deref().unwrap_or("—"),
-            req.tg_display_name.as_deref().unwrap_or("—"),
-            format_timestamp(req.created_at),
-        );
-        bot.send_message(chat_id, text)
-            .reply_markup(crate::bot::keyboards::approve_reject_buttons(req.id))
-            .await?;
-    }
-    Ok(())
-}
-
-pub async fn admin_show_users_page(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    requested_page: i64,
-    message_id: Option<teloxide::types::MessageId>,
-) -> HandlerResult {
-    let total_users = state.db.count_active_users().await?;
-    let users_page_size = state.config.users_page_size.max(1);
-    if total_users <= 0 {
-        let text = "Активных пользователей нет.";
-        if let Some(message_id) = message_id {
-            bot.edit_message_text(chat_id, message_id, text)
-                .reply_markup(InlineKeyboardMarkup::default())
-                .await?;
-        } else {
-            bot.send_message(chat_id, text)
-                .reply_markup(crate::bot::keyboards::admin_menu())
-                .await?;
-        }
-        return Ok(());
-    }
-
-    let total_pages = ((total_users + users_page_size - 1) / users_page_size).max(1);
-    let page = requested_page.clamp(1, total_pages);
-    let offset = (page - 1) * users_page_size;
-    let users = state
-        .db
-        .list_active_users_page(users_page_size, offset)
-        .await?;
-
-    let titles: Vec<(i64, String)> = users
-        .iter()
-        .map(|user| {
-            let display_name = user_display_name(user);
-            let short = if display_name.chars().count() > 40 {
-                format!("{}...", display_name.chars().take(37).collect::<String>())
-            } else {
-                display_name
-            };
-            (user.tg_user_id, format!("{} (id {})", short, user.tg_user_id))
-        })
-        .collect();
-
-    let text = format!(
-        "👥 Активные пользователи\nВсего: {}\nСтраница: {}/{}\n\nНажмите на пользователя, чтобы открыть карточку.",
-        total_users, page, total_pages
-    );
-    let keyboard = crate::bot::keyboards::users_page_keyboard(&titles, page, total_pages);
-
-    if let Some(message_id) = message_id {
-        bot.edit_message_text(chat_id, message_id, text)
-            .reply_markup(keyboard)
-            .await?;
-    } else {
-        bot.send_message(chat_id, text).reply_markup(keyboard).await?;
-    }
-    Ok(())
-}
-
-pub async fn admin_show_stats(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    let stats = state.db.admin_stats().await?;
-    let text = format!(
-        "📊 Статистика:\n\
-         Всего записей: {}\n\
-         Ожидают: {}\n\
-         Активные: {}\n\
-         Отклонённые: {}\n\
-         Удалённые: {}",
-        stats.total, stats.pending, stats.approved, stats.rejected, stats.deleted
-    );
-    bot.send_message(chat_id, text)
-        .reply_markup(crate::bot::keyboards::admin_menu())
-        .await?;
-    Ok(())
-}
-
-pub async fn admin_show_service_panel(bot: &Bot, chat_id: ChatId, state: &BotState) -> HandlerResult {
-    let result = state.service.status();
-    let text = format!(
-        "⚙️ Сервис telemt\n\n{}",
-        state.service.format_result("status", &result)
-    );
-    bot.send_message(chat_id, text)
-        .reply_markup(crate::bot::keyboards::service_control_buttons())
-        .await?;
-    Ok(())
-}
-
-pub async fn send_user_qr_to_admin(
-    bot: &Bot,
-    q: &CallbackQuery,
-    user: &RegistrationRequest,
-    state: &BotState,
-) -> Result<(), anyhow::Error> {
-    let Some(secret) = user.secret.as_deref() else {
-        return Err(anyhow!("Не найден секрет пользователя"));
-    };
-
-    let params = state.telemt_cfg.read_link_params()?;
-    let link = build_proxy_link(&params, secret)?;
-    let qr_png = build_user_qr_png_bytes(&link)?;
-    let caption = super::format::render_user_proxy_for_forward(user, &link);
-
-    if let Some((chat_id, _)) = callback_message_target(q) {
-        bot.send_photo(
-            chat_id,
-            InputFile::memory(qr_png).file_name(format!("telemt-proxy-{}.png", user.tg_user_id)),
-        )
-        .caption(caption)
-        .await?;
-    }
-    Ok(())
-}
-
-pub fn callback_prefix_filter(prefix: &'static str) -> impl Fn(CallbackQuery) -> Option<CallbackQuery> {
-    move |q: CallbackQuery| {
-        if q.data.as_deref().is_some_and(|payload| payload.starts_with(prefix)) {
-            Some(q)
-        } else {
-            None
-        }
     }
 }
 

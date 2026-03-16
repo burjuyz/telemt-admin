@@ -13,7 +13,6 @@ use clap::Parser;
 use std::sync::Arc;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
-use tokio::sync::Mutex;
 
 use cli::{Cli, Commands};
 
@@ -57,7 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "Configuration loaded"
     );
 
-    let db = Arc::new(db::Db::open(&config.db_path).await?);
+    let db = Arc::new(
+        db::Db::open(&config.db_path, config.security.wizard_state_ttl_seconds).await?,
+    );
     let telemt_cfg = Arc::new(telemt_cfg::TelemtConfig::new(&config.telemt_config_path));
     let service = service::ServiceController::new(&config.service_name);
 
@@ -73,13 +74,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
+    if let Err(error) = bot.set_my_commands(bot::handlers::telegram_commands()).await {
+        tracing::warn!(error = %error, "Не удалось обновить список slash-команд бота");
+    }
+
     let state = bot::handlers::BotState {
         config,
         db,
         telemt_cfg,
         service,
         bot_username,
-        awaiting_invite_users: Arc::new(Mutex::new(std::collections::HashSet::new())),
     };
     tracing::info!("Dispatcher initialized, bot is ready");
 

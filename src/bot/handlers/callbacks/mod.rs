@@ -1,241 +1,396 @@
-use super::format::render_user_card_text;
-use super::shared::{
-    admin_show_users_page, approve_request_and_build_link, callback_message_target,
-    callback_prefix_filter, parse_callback_page, parse_callback_request_id, parse_callback_user_action,
-    perform_hard_ban, require_admin_callback, send_user_qr_to_admin, HandlerResult,
+use super::callback_data::{CallbackAction, ServiceAction};
+use super::screens::{
+    admin_show_pending, admin_show_service_panel, admin_show_stats, admin_show_users_page,
+    send_user_qr_to_admin, show_admin_home, show_token_menu, show_usage_guide, show_user_ban_confirm,
+    show_user_card, show_user_home,
 };
-use super::state::BotState;
-use teloxide::dptree;
+use super::shared::{
+    approve_request_and_build_link, callback_message_target, perform_hard_ban, require_admin_callback,
+    HandlerResult,
+};
+use super::state::{clear_wizard_state, set_wizard_state, BotState, WizardState};
 use teloxide::prelude::*;
 
 pub fn handler() -> teloxide::dispatching::UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
-    Update::filter_callback_query()
-        .branch(
-            dptree::filter_map(callback_prefix_filter("users_page:")).endpoint(callback_users_page),
-        )
-        .branch(dptree::filter_map(callback_prefix_filter("user_open:")).endpoint(callback_user_open))
-        .branch(dptree::filter_map(callback_prefix_filter("user_view:")).endpoint(callback_user_view))
-        .branch(dptree::filter_map(callback_prefix_filter("user_ban:")).endpoint(callback_user_ban))
-        .branch(dptree::filter_map(callback_prefix_filter("approve:")).endpoint(callback_approve))
-        .branch(dptree::filter_map(callback_prefix_filter("reject:")).endpoint(callback_reject))
-        .branch(
-            dptree::filter_map(callback_prefix_filter("delete_user:")).endpoint(callback_delete_user),
-        )
-        .branch(
-            dptree::filter_map(callback_prefix_filter("service:")).endpoint(callback_service_action),
-        )
+    Update::filter_callback_query().endpoint(handle_callback)
 }
 
-async fn callback_approve(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+async fn handle_callback(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
+    let Some(data) = q.data.as_deref() else {
+        return Ok(());
+    };
+    let Some(action) = CallbackAction::decode(data) else {
+        bot.answer_callback_query(q.id.clone())
+            .text("Устаревшая или некорректная кнопка")
+            .show_alert(true)
+            .await?;
         return Ok(());
     };
 
-    let data = q.data.as_deref().unwrap_or("");
-    let request_id = parse_callback_request_id(data, "approve:")?;
-    tracing::info!(
-        admin_id = admin_id,
-        request_id = request_id,
-        "Approve callback received"
-    );
-    let message_target = callback_message_target(&q);
-
-    let (request, link) = match approve_request_and_build_link(&state, request_id).await? {
-        Some(payload) => payload,
-        None => {
+    match action {
+        CallbackAction::ShowAdminHome => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                clear_wizard_state(&state, q.from.id.0 as i64).await?;
+                bot.answer_callback_query(q.id.clone()).await?;
+                show_admin_home(&bot, chat_id, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::ShowUserHome => {
+            let user_id = q.from.id.0 as i64;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                clear_wizard_state(&state, user_id).await?;
+                bot.answer_callback_query(q.id.clone()).await?;
+                show_user_home(&bot, chat_id, Some(message_id), &state, user_id).await?;
+            }
+        }
+        CallbackAction::ShowUsageGuide => {
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.answer_callback_query(q.id.clone()).await?;
+                show_usage_guide(&bot, chat_id, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::PromptInviteToken => {
+            let user_id = q.from.id.0 as i64;
+            clear_wizard_state(&state, user_id).await?;
+            set_wizard_state(&state, user_id, WizardState::AwaitingInviteToken).await?;
             bot.answer_callback_query(q.id.clone())
-                .text("Заявка уже обработана или не найдена")
+                .text("Жду invite-токен следующим сообщением")
                 .await?;
-            return Ok(());
-        }
-    };
-
-    bot.answer_callback_query(q.id.clone()).text("Одобрено").await?;
-
-    if let Some((chat_id, message_id)) = message_target {
-        bot.edit_message_text(chat_id, message_id, "✅ Заявка одобрена")
-            .reply_markup(teloxide::types::InlineKeyboardMarkup::default())
-            .await?;
-    }
-
-    bot.send_message(
-        ChatId(request.tg_user_id),
-        format!("Ваша ссылка на прокси:\n\n{}", link),
-    )
-    .await?;
-
-    tracing::info!("Admin {} approved request #{}", admin_id, request_id);
-    Ok(())
-}
-
-async fn callback_reject(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
-        return Ok(());
-    };
-
-    let data = q.data.as_deref().unwrap_or("");
-    let request_id = parse_callback_request_id(data, "reject:")?;
-    tracing::info!(
-        admin_id = admin_id,
-        request_id = request_id,
-        "Reject callback received"
-    );
-    let message_target = callback_message_target(&q);
-    let request = state.db.reject(request_id).await?;
-
-    bot.answer_callback_query(q.id.clone()).text("Отклонено").await?;
-
-    if let Some(request) = request {
-        if let Some((chat_id, message_id)) = message_target {
-            bot.edit_message_text(chat_id, message_id, "❌ Заявка отклонена")
-                .reply_markup(teloxide::types::InlineKeyboardMarkup::default())
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.edit_message_text(
+                    chat_id,
+                    message_id,
+                    "Отправьте invite-токен следующим сообщением.\n\nЕсли передумали, нажмите «Назад».",
+                )
+                .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                    CallbackAction::ShowUserHome,
+                ))
                 .await?;
+            }
         }
-        bot.send_message(
-            ChatId(request.tg_user_id),
-            "Ваша заявка на регистрацию отклонена администратором.",
-        )
-        .await?;
-    }
-
-    tracing::info!("Admin {} rejected request #{}", admin_id, request_id);
-    Ok(())
-}
-
-async fn callback_users_page(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let page = parse_callback_page(data, "users_page:")?;
-    bot.answer_callback_query(q.id.clone()).await?;
-
-    if let Some((chat_id, message_id)) = callback_message_target(&q) {
-        admin_show_users_page(&bot, chat_id, &state, page, Some(message_id)).await?;
-    }
-    Ok(())
-}
-
-async fn callback_user_open(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let (tg_user_id, page) = parse_callback_user_action(data, "user_open:")?;
-    let user = state.db.get_active_user_by_tg_user(tg_user_id).await?;
-    let Some(user) = user else {
-        bot.answer_callback_query(q.id.clone())
-            .text("Пользователь уже неактивен")
-            .show_alert(true)
+        CallbackAction::CancelWizard => {
+            let user_id = q.from.id.0 as i64;
+            clear_wizard_state(&state, user_id).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text("Сценарий отменён")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                if state.config.is_admin(user_id) {
+                    show_admin_home(&bot, chat_id, Some(message_id)).await?;
+                } else {
+                    show_user_home(&bot, chat_id, Some(message_id), &state, user_id).await?;
+                }
+            }
+        }
+        CallbackAction::ShowPendingRequests => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, _)) = callback_message_target(&q) {
+                admin_show_pending(&bot, chat_id, &state).await?;
+            }
+        }
+        CallbackAction::ShowUsersPage { page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                admin_show_users_page(&bot, chat_id, &state, page, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::OpenUserCard { tg_user_id, page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
+                bot.answer_callback_query(q.id.clone())
+                    .text("Пользователь уже неактивен")
+                    .show_alert(true)
+                    .await?;
+                return Ok(());
+            };
+            bot.answer_callback_query(q.id.clone())
+                .text("Открыта карточка")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                show_user_card(&bot, chat_id, message_id, &user, page).await?;
+            }
+        }
+        CallbackAction::ViewUserQr { tg_user_id } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
+                bot.answer_callback_query(q.id.clone())
+                    .text("Пользователь уже неактивен")
+                    .show_alert(true)
+                    .await?;
+                return Ok(());
+            };
+            bot.answer_callback_query(q.id.clone())
+                .text("Отправляю ссылку и QR")
+                .await?;
+            send_user_qr_to_admin(&bot, &q, &user, &state).await?;
+        }
+        CallbackAction::ConfirmUserBan { tg_user_id, page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                show_user_ban_confirm(&bot, chat_id, message_id, tg_user_id, page).await?;
+            }
+        }
+        CallbackAction::ExecuteUserBan { tg_user_id, page } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let status_text = perform_hard_ban(&state, tg_user_id).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text(status_text.clone())
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.send_message(chat_id, status_text).await?;
+                admin_show_users_page(&bot, chat_id, &state, page, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::ShowStats => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, _)) = callback_message_target(&q) {
+                admin_show_stats(&bot, chat_id, &state).await?;
+            }
+        }
+        CallbackAction::ShowServicePanel => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                admin_show_service_panel(&bot, chat_id, &state, Some(message_id)).await?;
+            }
+        }
+        CallbackAction::RunServiceAction { action } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let (action_name, result) = match action {
+                ServiceAction::Start => ("start", state.service.start()),
+                ServiceAction::Stop => ("stop", state.service.stop()),
+                ServiceAction::Restart => ("restart", state.service.restart()),
+                ServiceAction::Reload => ("reload", state.service.reload()),
+                ServiceAction::Status => ("status", state.service.status()),
+            };
+            bot.answer_callback_query(q.id.clone())
+                .text(format!("Выполнено: {}", action_name))
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                let text = format!(
+                    "⚙️ Сервис telemt\n\n{}",
+                    state.service.format_result(action_name, &result)
+                );
+                bot.edit_message_text(chat_id, message_id, text)
+                    .reply_markup(crate::bot::keyboards::service_control_buttons())
+                    .await?;
+            }
+        }
+        CallbackAction::ShowTokenMenu => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                show_token_menu(&bot, chat_id, Some(message_id), &state).await?;
+            }
+        }
+        CallbackAction::PromptTokenCreate { auto_approve } => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            clear_wizard_state(&state, admin_id).await?;
+            set_wizard_state(
+                &state,
+                admin_id,
+                WizardState::AdminTokenCreateAwaitingParams { auto_approve },
+            )
             .await?;
-        return Ok(());
-    };
-
-    bot.answer_callback_query(q.id.clone())
-        .text("Открыта карточка")
-        .await?;
-    if let Some((chat_id, message_id)) = callback_message_target(&q) {
-        bot.edit_message_text(chat_id, message_id, render_user_card_text(&user))
-            .reply_markup(crate::bot::keyboards::user_card_keyboard(user.tg_user_id, page))
+            bot.answer_callback_query(q.id.clone())
+                .text("Жду параметры токена")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                let text = if auto_approve {
+                    "Отправьте параметры авто-токена следующим сообщением.\n\nФормат: [days] [--max-uses N]\nМожно отправить пустое сообщение только с пробелами нельзя, но можно просто число дней."
+                } else {
+                    "Отправьте параметры токена следующим сообщением.\n\nФормат: [days] [--max-uses N]\nНапример: 7 --max-uses 3"
+                };
+                bot.edit_message_text(chat_id, message_id, text)
+                    .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                        CallbackAction::ShowTokenMenu,
+                    ))
+                    .await?;
+            }
+        }
+        CallbackAction::ShowTokenList => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, _)) = callback_message_target(&q) {
+                let tokens = state.db.list_active_invite_tokens(50).await?;
+                if tokens.is_empty() {
+                    bot.send_message(chat_id, "Активных invite-токенов нет.").await?;
+                } else {
+                    let text = tokens
+                        .iter()
+                        .map(super::format::render_invite_token_line)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    bot.send_message(chat_id, format!("Активные токены:\n\n{}", text))
+                        .await?;
+                }
+            }
+        }
+        CallbackAction::PromptTokenRevoke => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            clear_wizard_state(&state, admin_id).await?;
+            set_wizard_state(&state, admin_id, WizardState::AdminTokenRevokeAwaitingToken).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text("Жду код токена")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.edit_message_text(
+                    chat_id,
+                    message_id,
+                    "Отправьте код токена следующим сообщением.",
+                )
+                .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                    CallbackAction::ShowTokenMenu,
+                ))
+                .await?;
+            }
+        }
+        CallbackAction::PromptCreateUser => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            clear_wizard_state(&state, admin_id).await?;
+            set_wizard_state(&state, admin_id, WizardState::AdminCreateAwaitingTarget).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text("Жду ID или @username")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.edit_message_text(
+                    chat_id,
+                    message_id,
+                    "Отправьте Telegram ID или @username следующим сообщением.",
+                )
+                .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                    CallbackAction::ShowAdminHome,
+                ))
+                .await?;
+            }
+        }
+        CallbackAction::PromptDeleteUser => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            clear_wizard_state(&state, admin_id).await?;
+            set_wizard_state(&state, admin_id, WizardState::AdminDeleteAwaitingTarget).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text("Жду Telegram ID")
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.edit_message_text(
+                    chat_id,
+                    message_id,
+                    "Отправьте Telegram ID пользователя, которого нужно удалить.",
+                )
+                .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                    CallbackAction::ShowAdminHome,
+                ))
+                .await?;
+            }
+        }
+        CallbackAction::ConfirmDeleteUser { tg_user_id } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            bot.answer_callback_query(q.id.clone()).await?;
+            if let Some((chat_id, _)) = callback_message_target(&q) {
+                super::screens::show_delete_user_confirm(&bot, chat_id, tg_user_id).await?;
+            }
+        }
+        CallbackAction::ExecuteDeleteUser { tg_user_id } => {
+            if require_admin_callback(&bot, &q, &state).await?.is_none() {
+                return Ok(());
+            }
+            let status_text = perform_hard_ban(&state, tg_user_id).await?;
+            bot.answer_callback_query(q.id.clone())
+                .text(status_text.clone())
+                .await?;
+            if let Some((chat_id, message_id)) = callback_message_target(&q) {
+                bot.edit_message_text(chat_id, message_id, status_text)
+                    .reply_markup(crate::bot::keyboards::admin_home_keyboard())
+                    .await?;
+            }
+        }
+        CallbackAction::ApproveRequest { request_id } => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            let message_target = callback_message_target(&q);
+            let (request, link) = match approve_request_and_build_link(&state, request_id).await? {
+                Some(payload) => payload,
+                None => {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("Заявка уже обработана или не найдена")
+                        .await?;
+                    return Ok(());
+                }
+            };
+            bot.answer_callback_query(q.id.clone()).text("Одобрено").await?;
+            if let Some((chat_id, message_id)) = message_target {
+                bot.edit_message_text(chat_id, message_id, "✅ Заявка одобрена")
+                    .reply_markup(teloxide::types::InlineKeyboardMarkup::default())
+                    .await?;
+            }
+            bot.send_message(
+                ChatId(request.tg_user_id),
+                format!("Ваша ссылка на прокси:\n\n{}", link),
+            )
             .await?;
-    }
-    Ok(())
-}
-
-async fn callback_user_view(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let (tg_user_id, _) = parse_callback_user_action(data, "user_view:")?;
-    let user = state.db.get_active_user_by_tg_user(tg_user_id).await?;
-    let Some(user) = user else {
-        bot.answer_callback_query(q.id.clone())
-            .text("Пользователь уже неактивен")
-            .show_alert(true)
-            .await?;
-        return Ok(());
-    };
-
-    bot.answer_callback_query(q.id.clone())
-        .text("Отправляю ссылку и QR")
-        .await?;
-    send_user_qr_to_admin(&bot, &q, &user, &state).await?;
-    Ok(())
-}
-
-async fn callback_user_ban(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let (tg_user_id, page) = parse_callback_user_action(data, "user_ban:")?;
-    let status_text = perform_hard_ban(&state, tg_user_id).await?;
-    bot.answer_callback_query(q.id.clone())
-        .text(status_text.clone())
-        .await?;
-
-    if let Some((chat_id, message_id)) = callback_message_target(&q) {
-        bot.send_message(chat_id, status_text).await?;
-        admin_show_users_page(&bot, chat_id, &state, page, Some(message_id)).await?;
-    }
-    Ok(())
-}
-
-async fn callback_delete_user(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let tg_user_id = parse_callback_request_id(data, "delete_user:")?;
-    let status_text = perform_hard_ban(&state, tg_user_id).await?;
-
-    bot.answer_callback_query(q.id.clone())
-        .text(status_text.clone())
-        .await?;
-
-    if let Some((chat_id, message_id)) = callback_message_target(&q) {
-        bot.edit_message_reply_markup(chat_id, message_id)
-            .reply_markup(teloxide::types::InlineKeyboardMarkup::default())
-            .await?;
-        bot.send_message(chat_id, status_text)
-            .reply_markup(crate::bot::keyboards::admin_menu())
-            .await?;
-    }
-    Ok(())
-}
-
-async fn callback_service_action(bot: Bot, q: CallbackQuery, state: BotState) -> HandlerResult {
-    if require_admin_callback(&bot, &q, &state).await?.is_none() {
-        return Ok(());
-    }
-
-    let data = q.data.as_deref().unwrap_or("");
-    let action = data.strip_prefix("service:").unwrap_or("status");
-    let (action_name, result) = match action {
-        "restart" => ("restart", state.service.restart()),
-        "reload" => ("reload", state.service.reload()),
-        "status" => ("status", state.service.status()),
-        _ => ("status", state.service.status()),
-    };
-
-    bot.answer_callback_query(q.id.clone())
-        .text(format!("Выполнено: {}", action_name))
-        .await?;
-
-    if let Some((chat_id, message_id)) = callback_message_target(&q) {
-        let text = format!(
-            "⚙️ Сервис telemt\n\n{}",
-            state.service.format_result(action_name, &result)
-        );
-        bot.edit_message_text(chat_id, message_id, text)
-            .reply_markup(crate::bot::keyboards::service_control_buttons())
-            .await?;
+            tracing::info!("Admin {} approved request #{}", admin_id, request_id);
+        }
+        CallbackAction::RejectRequest { request_id } => {
+            let Some(admin_id) = require_admin_callback(&bot, &q, &state).await? else {
+                return Ok(());
+            };
+            let message_target = callback_message_target(&q);
+            let request = state.db.reject(request_id).await?;
+            bot.answer_callback_query(q.id.clone()).text("Отклонено").await?;
+            if let Some(request) = request {
+                if let Some((chat_id, message_id)) = message_target {
+                    bot.edit_message_text(chat_id, message_id, "❌ Заявка отклонена")
+                        .reply_markup(teloxide::types::InlineKeyboardMarkup::default())
+                        .await?;
+                }
+                bot.send_message(
+                    ChatId(request.tg_user_id),
+                    "Ваша заявка на регистрацию отклонена администратором.",
+                )
+                .await?;
+            }
+            tracing::info!("Admin {} rejected request #{}", admin_id, request_id);
+        }
     }
     Ok(())
 }

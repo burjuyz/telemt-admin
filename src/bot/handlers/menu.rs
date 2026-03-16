@@ -1,10 +1,10 @@
 use super::commands::{
-    admin_show_pending_cmd, admin_show_service_cmd, admin_show_stats_cmd, admin_show_users_cmd,
-    cmd_help, try_process_waiting_invite,
+    create_user_from_input, handle_token_create_from_text, prompt_delete_confirmation,
 };
-use super::format::usage_guide_text;
-use super::shared::{send_user_link, HandlerResult};
-use super::state::{sender_user_id, BotState};
+use super::shared::{process_invite_token, HandlerResult};
+use super::state::{
+    clear_wizard_state, sender_display_name, sender_user_id, wizard_state, BotState, WizardState,
+};
 use teloxide::prelude::*;
 
 pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
@@ -14,61 +14,80 @@ pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> Han
     let Some(user_id) = sender_user_id(&msg) else {
         return Ok(());
     };
-    let is_admin = state.config.is_admin(user_id);
 
-    if try_process_waiting_invite(&bot, &msg, &state, user_id).await? {
+    if text.starts_with('/') {
+        bot.send_message(msg.chat.id, "Неизвестная команда. Используйте /help.")
+            .await?;
         return Ok(());
     }
 
-    match text {
-        crate::bot::keyboards::BTN_USER_LINK => {
-            send_user_link(&bot, msg.chat.id, user_id, &state).await?;
-        }
-        crate::bot::keyboards::BTN_USER_GUIDE => {
-            bot.send_message(msg.chat.id, usage_guide_text())
-                .reply_markup(crate::bot::keyboards::user_menu())
-                .await?;
-        }
-        crate::bot::keyboards::BTN_ADMIN_PENDING if is_admin => {
-            admin_show_pending_cmd(&bot, msg.chat.id, &state).await?;
-        }
-        crate::bot::keyboards::BTN_ADMIN_USERS if is_admin => {
-            admin_show_users_cmd(&bot, msg.chat.id, &state).await?;
-        }
-        crate::bot::keyboards::BTN_ADMIN_SERVICE if is_admin => {
-            admin_show_service_cmd(&bot, msg.chat.id, &state).await?;
-        }
-        crate::bot::keyboards::BTN_ADMIN_STATS if is_admin => {
-            admin_show_stats_cmd(&bot, msg.chat.id, &state).await?;
-        }
-        crate::bot::keyboards::BTN_ADMIN_CREATE_HINT if is_admin => {
-            bot.send_message(
-                msg.chat.id,
-                "Создание пользователя:\n\
-                 /create <tg_user_id>\n\
-                 /create @username\n\n\
-                 Для варианта с @username пользователь должен ранее отправить боту /start.",
+    match wizard_state(&state, user_id).await? {
+        Some(WizardState::AwaitingInviteToken) => {
+            let username = msg.from.as_ref().and_then(|u| u.username.clone());
+            let display_name = sender_display_name(&msg);
+            process_invite_token(
+                &bot,
+                &msg,
+                &state,
+                user_id,
+                username.as_deref(),
+                display_name.as_deref(),
+                text.trim(),
             )
-            .reply_markup(crate::bot::keyboards::admin_menu())
             .await?;
         }
-        crate::bot::keyboards::BTN_ADMIN_HELP if is_admin => {
-            cmd_help(bot, msg, state).await?;
+        Some(WizardState::AdminCreateAwaitingTarget) => {
+            let created = create_user_from_input(&bot, msg.chat.id, &state, text.trim()).await?;
+            if created {
+                clear_wizard_state(&state, user_id).await?;
+            }
         }
-        _ => {
-            let reply_text = if is_admin {
-                "Не понял команду. Используйте кнопки админ-меню ниже."
+        Some(WizardState::AdminDeleteAwaitingTarget) => {
+            let prompted = prompt_delete_confirmation(&bot, msg.chat.id, text.trim()).await?;
+            if prompted {
+                clear_wizard_state(&state, user_id).await?;
+            }
+        }
+        Some(WizardState::AdminTokenCreateAwaitingParams { auto_approve }) => {
+            let created = handle_token_create_from_text(
+                &bot,
+                msg.chat.id,
+                &state,
+                auto_approve,
+                text.trim(),
+                Some(user_id),
+            )
+            .await?;
+            if created {
+                clear_wizard_state(&state, user_id).await?;
+            }
+        }
+        Some(WizardState::AdminTokenRevokeAwaitingToken) => {
+            let token = text.trim();
+            if token.is_empty() {
+                bot.send_message(msg.chat.id, "Отправьте код токена одним сообщением.")
+                    .await?;
             } else {
-                "Не понял запрос. Используйте кнопки меню ниже."
-            };
-            let reply_markup = if is_admin {
-                crate::bot::keyboards::admin_menu()
-            } else {
-                crate::bot::keyboards::user_menu()
-            };
-            bot.send_message(msg.chat.id, reply_text)
-                .reply_markup(reply_markup)
-                .await?;
+                let revoked = state.db.revoke_invite_token(token).await?;
+                if revoked {
+                    clear_wizard_state(&state, user_id).await?;
+                    bot.send_message(msg.chat.id, format!("Токен {} отозван.", token))
+                        .await?;
+                } else {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Токен не найден или уже отозван. Можно отправить другой код.",
+                    )
+                    .await?;
+                }
+            }
+        }
+        None => {
+            bot.send_message(
+                msg.chat.id,
+                "Не понял запрос. Используйте /help или начните нужный сценарий через slash-команду.",
+            )
+            .await?;
         }
     }
     Ok(())
