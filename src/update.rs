@@ -30,6 +30,7 @@ struct GitHubAsset {
 const ASSET_LINUX_X86_64: &str = "telemt-admin-linux-x86_64.tar.gz";
 
 /// Имя asset для Windows x86_64.
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ASSET_WINDOWS_X86_64: &str = "telemt-admin-windows-x86_64.zip";
 
 fn current_version() -> Version {
