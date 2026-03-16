@@ -63,7 +63,7 @@ pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult 
 /reject <id> — отклонить заявку
 /create <tg_user_id | @username> — создать пользователя
 /delete <tg_user_id> — удалить пользователя
-/service <start|stop|restart|reload|status> — управление telemt.service
+/service <start|stop|status|reload|restart> — управление telemt.service
 /token create [days] [--auto|-a] [--max-uses N] — создать invite-токен
 /token list — список активных invite-токенов
 /token revoke <token> — отозвать invite-токен"#;
@@ -333,7 +333,7 @@ async fn cmd_service(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         _ => {
             bot.send_message(
                 msg.chat.id,
-                "Использование: /service <start|stop|restart|reload|status>",
+                "Использование: /service <start|stop|status|reload|restart>",
             )
             .await?;
             return Ok(());

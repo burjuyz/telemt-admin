@@ -220,17 +220,6 @@ pub fn build_user_qr_png_bytes(payload: &str) -> Result<Vec<u8>, anyhow::Error> 
     Ok(bytes)
 }
 
-pub fn restart_telemt_service(state: &BotState, context: &'static str) {
-    let restart_result = state.service.restart();
-    if !restart_result.success {
-        tracing::warn!(
-            stderr = %restart_result.stderr,
-            "Не удалось перезапустить telemt после {}",
-            context
-        );
-    }
-}
-
 pub async fn approve_request_and_build_link(
     state: &BotState,
     request_id: i64,
@@ -252,8 +241,6 @@ pub async fn approve_request_and_build_link(
     {
         return Ok(None);
     }
-
-    restart_telemt_service(state, "одобрения заявки");
 
     let link_params = state.telemt_cfg.read_link_params()?;
     let proxy_link = build_proxy_link(&link_params, &user_secret)?;
@@ -279,8 +266,6 @@ pub async fn approve_user_direct_and_build_link(
             &secret,
         )
         .await?;
-
-    restart_telemt_service(state, "выдачи доступа");
 
     let params = state.telemt_cfg.read_link_params()?;
     build_proxy_link(&params, &secret).map_err(anyhow::Error::from)
@@ -448,10 +433,6 @@ pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<Strin
     let telemt_user = telemt_username(tg_user_id);
     let removed_from_cfg = state.telemt_cfg.remove_user(&telemt_user)?;
     let removed_from_db = state.db.deactivate_user(tg_user_id).await?;
-
-    if removed_from_cfg {
-        restart_telemt_service(state, "удаления пользователя");
-    }
 
     if removed_from_cfg || removed_from_db {
         Ok(format!("Пользователь {} удалён", telemt_user))

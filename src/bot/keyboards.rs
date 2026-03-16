@@ -100,13 +100,8 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
 }
 
 pub fn service_control_buttons() -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::default()
-        .append_row(vec![
-            InlineKeyboardButton::callback("🔄 Обновить", "service:status"),
-            InlineKeyboardButton::callback("♻️ Рестарт", "service:restart"),
-        ])
-        .append_row(vec![InlineKeyboardButton::callback(
-            "📖 Перечитать конфиг",
-            "service:reload",
-        )])
+    InlineKeyboardMarkup::default().append_row(vec![
+        InlineKeyboardButton::callback("🔄 Обновить", "service:status"),
+        InlineKeyboardButton::callback("📖 Перечитать конфиг", "service:reload"),
+    ])
 }
