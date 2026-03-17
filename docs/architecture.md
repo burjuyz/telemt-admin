@@ -9,7 +9,7 @@
 - `src/service.rs` — обертка над `systemctl`.
 - `src/link.rs` — генерация секрета и `tg://proxy`-ссылки.
 - `src/bot/handlers.rs` — сборка схемы обработчиков.
-- `src/bot/handlers/commands/mod.rs` — slash-команды как точки входа, включая совместимые формы с аргументами.
+- `src/bot/handlers/commands/mod.rs` — slash-команды как точки входа в основные разделы и сценарии бота.
 - `src/bot/handlers/callbacks/mod.rs` — inline callbacks и wizard-навигация.
 - `src/bot/handlers/menu.rs` — текстовый ввод для активного wizard-state.
 - `src/bot/keyboards.rs` — inline-клавиатуры.
