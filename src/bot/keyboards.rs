@@ -127,6 +127,7 @@ pub fn pending_requests_keyboard(
         })
         .collect();
 
+    let total_pages = total_pages.max(1);
     let prev_page = if page > 1 { page - 1 } else { 1 };
     let next_page = if page < total_pages {
         page + 1
@@ -137,9 +138,17 @@ pub fn pending_requests_keyboard(
     rows.push(page_nav_row(
         page,
         total_pages,
-        CallbackAction::ShowPendingRequestsPage { page: prev_page },
-        CallbackAction::ShowPendingRequestsPage { page },
-        CallbackAction::ShowPendingRequestsPage { page: next_page },
+        if page > 1 {
+            CallbackAction::ShowPendingRequestsPage { page: prev_page }
+        } else {
+            CallbackAction::Noop
+        },
+        CallbackAction::Noop,
+        if page < total_pages {
+            CallbackAction::ShowPendingRequestsPage { page: next_page }
+        } else {
+            CallbackAction::Noop
+        },
     ));
     rows.push(refresh_home_row(CallbackAction::ShowPendingRequestsPage {
         page,
@@ -197,6 +206,7 @@ pub fn users_page_keyboard(
         )]);
     }
 
+    let total_pages = total_pages.max(1);
     let prev_page = if page > 1 { page - 1 } else { 1 };
     let next_page = if page < total_pages {
         page + 1
@@ -207,9 +217,17 @@ pub fn users_page_keyboard(
     rows.push(page_nav_row(
         page,
         total_pages,
-        CallbackAction::ShowUsersPage { page: prev_page },
-        CallbackAction::ShowUsersPage { page },
-        CallbackAction::ShowUsersPage { page: next_page },
+        if page > 1 {
+            CallbackAction::ShowUsersPage { page: prev_page }
+        } else {
+            CallbackAction::Noop
+        },
+        CallbackAction::Noop,
+        if page < total_pages {
+            CallbackAction::ShowUsersPage { page: next_page }
+        } else {
+            CallbackAction::Noop
+        },
     ));
     rows.push(refresh_lookup_row(
         CallbackAction::ShowUsersPage { page },
@@ -336,6 +354,7 @@ pub fn token_list_keyboard(
         )]);
     }
 
+    let total_pages = total_pages.max(1);
     let prev_page = if page > 1 { page - 1 } else { 1 };
     let next_page = if page < total_pages {
         page + 1
@@ -346,9 +365,17 @@ pub fn token_list_keyboard(
     rows.push(page_nav_row(
         page,
         total_pages,
-        CallbackAction::ShowTokenListPage { page: prev_page },
-        CallbackAction::ShowTokenListPage { page },
-        CallbackAction::ShowTokenListPage { page: next_page },
+        if page > 1 {
+            CallbackAction::ShowTokenListPage { page: prev_page }
+        } else {
+            CallbackAction::Noop
+        },
+        CallbackAction::Noop,
+        if page < total_pages {
+            CallbackAction::ShowTokenListPage { page: next_page }
+        } else {
+            CallbackAction::Noop
+        },
     ));
     rows.push(refresh_lookup_row(
         CallbackAction::ShowTokenListPage { page },

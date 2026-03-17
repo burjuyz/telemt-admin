@@ -49,6 +49,11 @@ async fn handle_callback_inner(bot: Bot, q: CallbackQuery, state: BotState) -> H
         return Ok(());
     };
 
+    if matches!(action, CallbackAction::Noop) {
+        common::ack_callback(&bot, q.id.clone(), None, false).await?;
+        return Ok(());
+    }
+
     if user::handle_user_action(&bot, &q, &state, action.clone()).await? {
         return Ok(());
     }

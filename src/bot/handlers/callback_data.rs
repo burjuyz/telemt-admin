@@ -32,6 +32,7 @@ impl ServiceAction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CallbackAction {
+    Noop,
     ShowAdminHome,
     ShowUserHome,
     ShowUserLink,
@@ -69,6 +70,7 @@ pub enum CallbackAction {
 impl CallbackAction {
     pub fn encode(&self) -> String {
         match self {
+            Self::Noop => "v1|noop".to_string(),
             Self::ShowAdminHome => "v1|admin|home".to_string(),
             Self::ShowUserHome => "v1|user|home".to_string(),
             Self::ShowUserLink => "v1|user|link".to_string(),
@@ -138,6 +140,7 @@ impl CallbackAction {
     fn decode_v1(data: &str) -> Option<Self> {
         let parts: Vec<&str> = data.split('|').collect();
         match parts.as_slice() {
+            ["v1", "noop"] => Some(Self::Noop),
             ["v1", "admin", "home"] => Some(Self::ShowAdminHome),
             ["v1", "user", "home"] => Some(Self::ShowUserHome),
             ["v1", "user", "link"] => Some(Self::ShowUserLink),
