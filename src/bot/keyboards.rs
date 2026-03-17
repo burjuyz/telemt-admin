@@ -101,13 +101,10 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
             InlineKeyboardButton::callback("🎟 Токены", CallbackAction::ShowTokenMenu.encode()),
             InlineKeyboardButton::callback("⚙️ Сервис", CallbackAction::ShowServicePanel.encode()),
         ],
-        vec![
-            InlineKeyboardButton::callback("📊 Статистика", CallbackAction::ShowStats.encode()),
-            InlineKeyboardButton::callback(
-                "↩️ Главный экран",
-                CallbackAction::ShowAdminHome.encode(),
-            ),
-        ],
+        vec![InlineKeyboardButton::callback(
+            "📊 Статистика",
+            CallbackAction::ShowStats.encode(),
+        )],
     ])
 }
 
