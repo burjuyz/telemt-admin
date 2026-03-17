@@ -18,6 +18,11 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: BotState) -> Handler
     let callback_id = q.id.clone();
     let result = handle_callback_inner(bot.clone(), q, state).await;
     if let Err(error) = result {
+        let error_text = error.to_string();
+        if error_text.contains("message is not modified") {
+            tracing::debug!("Пропущено пустое обновление callback-сообщения: {}", error_text);
+            return Ok(());
+        }
         tracing::error!(error = %error, "Ошибка выполнения callback-действия");
         if is_admin {
             let _ = bot
