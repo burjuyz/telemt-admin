@@ -307,6 +307,8 @@ main() {
     require_command getent
     require_command groupadd
     require_command mktemp
+    require_command od
+    require_command tr
 
     info "Установка telemt + telemt-admin (Linux/systemd MVP)"
     info "Бинарники будут установлены в ${TELEMT_BIN_DIR%/}/telemt и ${TELEMT_ADMIN_BIN_DIR%/}/telemt-admin"
@@ -330,6 +332,9 @@ main() {
     local escaped_telemt_config_path
     local escaped_db_path
     local escaped_service_name
+    local telemt_api_auth
+    local escaped_telemt_api_auth
+    local escaped_telemt_api_base_url
 
     bot_token="$(prompt_nonempty "Bot token от @BotFather")"
     admin_ids_csv="$(prompt_admin_ids)"
@@ -354,6 +359,9 @@ main() {
     escaped_telemt_config_path="$(escape_toml_basic_string "$TELEMT_CONFIG_PATH")"
     escaped_db_path="$(escape_toml_basic_string "$TELEMT_ADMIN_STATE_DIR/state.db")"
     escaped_service_name="$(escape_toml_basic_string "$TELEMT_SERVICE_NAME")"
+    telemt_api_auth="Bearer $(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+    escaped_telemt_api_auth="$(escape_toml_basic_string "$telemt_api_auth")"
+    escaped_telemt_api_base_url="$(escape_toml_basic_string "http://127.0.0.1:9091")"
 
     step "Создаю системных пользователей и директории"
     ensure_group_exists "$TELEMT_USER"
@@ -394,6 +402,9 @@ port = ${telemt_port}
 
 [server.api]
 enabled = true
+listen = "127.0.0.1:9091"
+whitelist = ["127.0.0.1/32", "::1/128"]
+auth_header = "${escaped_telemt_api_auth}"
 
 [censorship]
 tls_domain = "${escaped_tls_domain}"
@@ -421,6 +432,14 @@ default_token_days = 14
 max_token_days = 180
 allow_auto_approve_tokens = true
 wizard_state_ttl_seconds = 86400
+
+[telemt_api]
+enabled = true
+base_url = "${escaped_telemt_api_base_url}"
+auth_header = "${escaped_telemt_api_auth}"
+timeout_ms = 5000
+allow_file_fallback = true
+prefer_api_links = true
 EOF
     chown "$TELEMT_ADMIN_USER:$TELEMT_ADMIN_USER" "$TELEMT_ADMIN_CONFIG_PATH"
     chmod 0600 "$TELEMT_ADMIN_CONFIG_PATH"

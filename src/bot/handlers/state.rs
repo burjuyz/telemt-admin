@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db::Db;
 use crate::service::ServiceController;
-use crate::telemt_cfg::TelemtConfig;
+use crate::telemt_backend::TelemtBackend;
 use std::sync::Arc;
 use teloxide::types::Message;
 
@@ -68,7 +68,7 @@ impl WizardState {
 pub struct BotState {
     pub config: Arc<Config>,
     pub db: Arc<Db>,
-    pub telemt_cfg: Arc<TelemtConfig>,
+    pub telemt_backend: TelemtBackend,
     pub service: ServiceController,
     pub bot_username: Option<String>,
 }

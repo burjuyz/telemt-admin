@@ -10,7 +10,8 @@
 - `src/db/invite_tokens.rs` — invite-токены, consume/revoke и проверки активного токена.
 - `src/db/admin.rs` — агрегаты админки и структурированные события активности.
 - `src/db/wizard_state.rs` — хранение wizard-state и TTL cleanup.
-- `src/telemt_cfg.rs` — чтение и изменение `telemt.toml`.
+- `src/telemt_cfg.rs` — legacy-адаптер для чтения и изменения `telemt.toml`.
+- `src/telemt_backend.rs` — единый backend-слой для работы с `telemt`: control API first, file/systemd fallback.
 - `src/service.rs` — async-обертка над `systemctl` и `journalctl`.
 - `src/link.rs` — генерация секрета и `tg://proxy`-ссылки.
 - `src/bot/handlers.rs` — сборка схемы обработчиков.
@@ -21,7 +22,7 @@
 
 Принципы:
 
-- Telegram/UI-логика не должна утекать в `db`, `service` и `telemt_cfg`.
+- Telegram/UI-логика не должна утекать в `db`, `service`, `telemt_cfg` и HTTP-клиент `telemt`.
 - Инфраструктурные модули не должны возвращать готовые русские UI-строки, если вместо этого можно вернуть структурированный результат.
 - Доменные операции лучше переиспользовать из общих функций, а не дублировать в командах и callbacks.
 - Новые UX-сценарии желательно строить как `slash -> wizard/inline`, а не как роутинг по тексту сообщений.
@@ -32,7 +33,8 @@
 
 - `src/db/*.rs` возвращают данные и доменные состояния, а не готовую разметку экранов.
 - `src/bot/handlers/screens.rs` и `src/bot/keyboards.rs` отвечают за presentation.
-- orchestration уровня “БД + telemt_cfg + service + Telegram-ответ” лучше держать в action/use-case функциях, а не размазывать по callback/router-коду.
+- orchestration уровня “БД + telemt backend + Telegram-ответ” лучше держать в action/use-case функциях, а не размазывать по callback/router-коду.
+- `telemt_backend` должен оставаться единой точкой выбора между control API и legacy file/systemd path.
 
 База данных:
 

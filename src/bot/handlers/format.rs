@@ -84,6 +84,23 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
         .map(|u| format!("@{}", u))
         .unwrap_or_else(|| "—".to_string());
     let telemt = user.telemt_username.as_deref().unwrap_or("—");
+    let backend_mode = user.backend_mode.as_deref().unwrap_or("—");
+    let last_sync = user
+        .last_synced_at
+        .map(format_timestamp)
+        .unwrap_or_else(|| "—".to_string());
+    let last_revision = user
+        .last_seen_revision
+        .as_deref()
+        .map(|value| {
+            if value.chars().count() > 24 {
+                format!("{}...", value.chars().take(21).collect::<String>())
+            } else {
+                value.to_string()
+            }
+        })
+        .unwrap_or_else(|| "—".to_string());
+    let sync_error = user.last_sync_error.as_deref().unwrap_or("нет");
 
     format!(
         "👤 {}\n\n\
@@ -91,12 +108,20 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
          📱 {}\n\
          📋 статус: {}\n\
          🔗 telemt: {}\n\
+         🧩 backend: {}\n\
+         🔁 sync: {}\n\
+         🪪 revision: {}\n\
+         ⚠️ sync error: {}\n\
          📅 {}",
         user_display_name(user),
         user.tg_user_id,
         username,
         user.status,
         telemt,
+        backend_mode,
+        last_sync,
+        last_revision,
+        sync_error,
         format_timestamp(user.created_at),
     )
 }

@@ -6,9 +6,9 @@ mod migrations;
 mod registration;
 mod wizard_state;
 
+use sqlx::FromRow;
 use sqlx::error::ErrorKind;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use sqlx::FromRow;
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
@@ -37,6 +37,10 @@ pub struct RegistrationRequest {
     pub telemt_username: Option<String>,
     pub secret: Option<String>,
     pub created_at: i64,
+    pub backend_mode: Option<String>,
+    pub last_sync_error: Option<String>,
+    pub last_seen_revision: Option<String>,
+    pub last_synced_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
@@ -108,10 +112,8 @@ pub(crate) const STATUS_APPROVED: &str = "approved";
 pub(crate) const STATUS_PENDING: &str = "pending";
 pub(crate) const STATUS_REJECTED: &str = "rejected";
 pub(crate) const STATUS_DELETED: &str = "deleted";
-pub(crate) const SELECT_REQUEST: &str =
-    "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at FROM registration_requests";
-pub(crate) const SELECT_INVITE_TOKEN: &str =
-    "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active FROM invite_tokens";
+pub(crate) const SELECT_REQUEST: &str = "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at, backend_mode, last_sync_error, last_seen_revision, last_synced_at FROM registration_requests";
+pub(crate) const SELECT_INVITE_TOKEN: &str = "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active FROM invite_tokens";
 pub(crate) const ACTIVE_INVITE_TOKEN_PREDICATE: &str =
     "is_active = 1 AND expires_at > ? AND (max_usage IS NULL OR usage_count < max_usage)";
 

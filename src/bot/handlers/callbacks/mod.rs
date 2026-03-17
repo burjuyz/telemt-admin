@@ -3,7 +3,9 @@ mod common;
 mod user;
 
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::shared::{callback_message_target, send_admin_backend_error, HandlerResult};
+use crate::bot::handlers::shared::{
+    HandlerResult, callback_message_target, send_admin_backend_error,
+};
 use crate::bot::handlers::state::BotState;
 use teloxide::prelude::*;
 
@@ -20,7 +22,10 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: BotState) -> Handler
     if let Err(error) = result {
         let error_text = error.to_string();
         if error_text.contains("message is not modified") {
-            tracing::debug!("Пропущено пустое обновление callback-сообщения: {}", error_text);
+            tracing::debug!(
+                "Пропущено пустое обновление callback-сообщения: {}",
+                error_text
+            );
             return Ok(());
         }
         tracing::error!(error = %error, "Ошибка выполнения callback-действия");

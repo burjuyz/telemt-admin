@@ -1,6 +1,6 @@
 use crate::db::{
-    current_unix_timestamp, is_unique_violation, ConsumedInviteToken, Db, InviteToken,
-    TokenConsumeError, TokenMode, ACTIVE_INVITE_TOKEN_PREDICATE, SELECT_INVITE_TOKEN,
+    ACTIVE_INVITE_TOKEN_PREDICATE, ConsumedInviteToken, Db, InviteToken, SELECT_INVITE_TOKEN,
+    TokenConsumeError, TokenMode, current_unix_timestamp, is_unique_violation,
 };
 use rand::distr::{Alphanumeric, SampleString};
 
@@ -161,11 +161,9 @@ impl Db {
     ) -> Result<ConsumedInviteToken, TokenConsumeError> {
         let now = current_unix_timestamp()
             .map_err(|err| map_internal_token_error("Не удалось получить текущее время", err))?;
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|err| map_internal_token_error("Не удалось начать транзакцию consume_invite_token", err))?;
+        let mut tx = self.pool.begin().await.map_err(|err| {
+            map_internal_token_error("Не удалось начать транзакцию consume_invite_token", err)
+        })?;
 
         let update_result = sqlx::query(&format!(
             "UPDATE invite_tokens
@@ -177,7 +175,9 @@ impl Db {
         .bind(now)
         .execute(&mut *tx)
         .await
-        .map_err(|err| map_internal_token_error("Не удалось обновить usage_count invite-токена", err))?;
+        .map_err(|err| {
+            map_internal_token_error("Не удалось обновить usage_count invite-токена", err)
+        })?;
 
         let row_sql = format!("{SELECT_INVITE_TOKEN} WHERE token = ?");
 
@@ -186,11 +186,16 @@ impl Db {
                 .bind(token)
                 .fetch_optional(&mut *tx)
                 .await
-                .map_err(|err| map_internal_token_error("Не удалось загрузить invite-токен после неуспешного consume", err))?;
+                .map_err(|err| {
+                    map_internal_token_error(
+                        "Не удалось загрузить invite-токен после неуспешного consume",
+                        err,
+                    )
+                })?;
 
-            tx.rollback()
-                .await
-                .map_err(|err| map_internal_token_error("Не удалось откатить транзакцию consume_invite_token", err))?;
+            tx.rollback().await.map_err(|err| {
+                map_internal_token_error("Не удалось откатить транзакцию consume_invite_token", err)
+            })?;
 
             let Some(row) = token_row else {
                 return Err(TokenConsumeError::NotFound);
@@ -211,16 +216,18 @@ impl Db {
             .bind(token)
             .fetch_optional(&mut *tx)
             .await
-            .map_err(|err| map_internal_token_error("Не удалось перечитать invite-токен после consume", err))?;
+            .map_err(|err| {
+                map_internal_token_error("Не удалось перечитать invite-токен после consume", err)
+            })?;
         let row = row.ok_or_else(|| {
             TokenConsumeError::Internal(anyhow::anyhow!(
                 "Invite-токен исчез после успешного обновления usage_count"
             ))
         })?;
 
-        tx.commit()
-            .await
-            .map_err(|err| map_internal_token_error("Не удалось закоммитить consume_invite_token", err))?;
+        tx.commit().await.map_err(|err| {
+            map_internal_token_error("Не удалось закоммитить consume_invite_token", err)
+        })?;
 
         Ok(ConsumedInviteToken {
             id: row.id,

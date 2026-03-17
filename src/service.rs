@@ -125,9 +125,8 @@ impl ServiceController {
         .await;
 
         #[cfg(not(unix))]
-        let output: Result<Output, std::io::Error> = Err(std::io::Error::other(
-            "systemctl доступен только на Unix",
-        ));
+        let output: Result<Output, std::io::Error> =
+            Err(std::io::Error::other("systemctl доступен только на Unix"));
 
         match output {
             Ok(o) => {
@@ -327,5 +326,4 @@ impl ServiceController {
             }
         }
     }
-
 }

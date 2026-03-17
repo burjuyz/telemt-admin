@@ -1,6 +1,6 @@
 use crate::db::{
-    current_unix_timestamp, Db, RegisterResult, RegistrationRequest, RequestStatus, SELECT_REQUEST,
-    STATUS_APPROVED, STATUS_DELETED, STATUS_PENDING,
+    Db, RegisterResult, RegistrationRequest, RequestStatus, SELECT_REQUEST, STATUS_APPROVED,
+    STATUS_DELETED, STATUS_PENDING, current_unix_timestamp,
 };
 
 impl Db {
@@ -104,7 +104,9 @@ impl Db {
                         .map(RegisterResult::Approved)
                         .unwrap_or(RegisterResult::AlreadyPending),
                     RequestStatus::Rejected => RegisterResult::Rejected,
-                    RequestStatus::Pending | RequestStatus::Deleted => RegisterResult::AlreadyPending,
+                    RequestStatus::Pending | RequestStatus::Deleted => {
+                        RegisterResult::AlreadyPending
+                    }
                 },
                 None => {
                     return Err(anyhow::anyhow!(
@@ -113,7 +115,8 @@ impl Db {
                 }
             }
         } else {
-            let pending_sql = format!("{SELECT_REQUEST} WHERE tg_user_id = ? AND status = 'pending'");
+            let pending_sql =
+                format!("{SELECT_REQUEST} WHERE tg_user_id = ? AND status = 'pending'");
             let req = sqlx::query_as::<_, RegistrationRequest>(&pending_sql)
                 .bind(tg_user_id)
                 .fetch_optional(&mut *tx)
@@ -219,9 +222,12 @@ impl Db {
     /// Деактивирует пользователя (помечает как удалённого для истории; сама запись остаётся).
     pub async fn deactivate_user(&self, tg_user_id: i64) -> Result<bool, anyhow::Error> {
         let r = sqlx::query(
-            "UPDATE registration_requests SET status = ? WHERE tg_user_id = ? AND status = ?",
+            "UPDATE registration_requests
+             SET status = ?, last_synced_at = ?
+             WHERE tg_user_id = ? AND status = ?",
         )
         .bind(STATUS_DELETED)
+        .bind(current_unix_timestamp()?)
         .bind(tg_user_id)
         .bind(STATUS_APPROVED)
         .execute(&self.pool)
@@ -326,7 +332,8 @@ impl Db {
         offset: i64,
     ) -> Result<Vec<RegistrationRequest>, anyhow::Error> {
         let rows = sqlx::query_as::<_, RegistrationRequest>(
-            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at
+            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at,
+                    backend_mode, last_sync_error, last_seen_revision, last_synced_at
              FROM registration_requests
              WHERE status = ?
              ORDER BY created_at DESC, id DESC
@@ -356,7 +363,8 @@ impl Db {
         offset: i64,
     ) -> Result<Vec<RegistrationRequest>, anyhow::Error> {
         let rows = sqlx::query_as::<_, RegistrationRequest>(
-            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at
+            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at,
+                    backend_mode, last_sync_error, last_seen_revision, last_synced_at
              FROM registration_requests
              WHERE status = ?
              ORDER BY created_at DESC
@@ -375,7 +383,8 @@ impl Db {
         tg_user_id: i64,
     ) -> Result<Option<RegistrationRequest>, anyhow::Error> {
         let row = sqlx::query_as::<_, RegistrationRequest>(
-            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at
+            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at,
+                    backend_mode, last_sync_error, last_seen_revision, last_synced_at
              FROM registration_requests
              WHERE status = ? AND tg_user_id = ?
              LIMIT 1",
@@ -385,5 +394,31 @@ impl Db {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    pub async fn mark_sync_state(
+        &self,
+        tg_user_id: i64,
+        backend_mode: &str,
+        last_seen_revision: Option<&str>,
+        last_sync_error: Option<&str>,
+    ) -> Result<(), anyhow::Error> {
+        let now = current_unix_timestamp()?;
+        sqlx::query(
+            "UPDATE registration_requests
+             SET backend_mode = ?,
+                 last_seen_revision = ?,
+                 last_sync_error = ?,
+                 last_synced_at = ?
+             WHERE tg_user_id = ?",
+        )
+        .bind(backend_mode)
+        .bind(last_seen_revision)
+        .bind(last_sync_error)
+        .bind(now)
+        .bind(tg_user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use crate::db::{
-    current_unix_timestamp, AdminActivity, AdminActivityKind, AdminStats, Db,
-    ACTIVE_INVITE_TOKEN_PREDICATE,
+    ACTIVE_INVITE_TOKEN_PREDICATE, AdminActivity, AdminActivityKind, AdminStats, Db,
+    current_unix_timestamp,
 };
 
 impl Db {

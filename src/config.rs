@@ -27,6 +27,9 @@ pub struct Config {
     /// Политики безопасности invite-токенов
     #[serde(default)]
     pub security: SecurityConfig,
+    /// Настройки control API telemt
+    #[serde(default)]
+    pub telemt_api: TelemtApiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +43,22 @@ pub struct SecurityConfig {
     pub wizard_state_ttl_seconds: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TelemtApiConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_telemt_api_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub auth_header: Option<String>,
+    #[serde(default = "default_telemt_api_timeout_ms")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_allow_file_fallback")]
+    pub allow_file_fallback: bool,
+    #[serde(default = "default_prefer_api_links")]
+    pub prefer_api_links: bool,
+}
+
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
@@ -47,6 +66,19 @@ impl Default for SecurityConfig {
             max_token_days: default_max_token_days(),
             allow_auto_approve_tokens: default_allow_auto_approve_tokens(),
             wizard_state_ttl_seconds: None,
+        }
+    }
+}
+
+impl Default for TelemtApiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: default_telemt_api_base_url(),
+            auth_header: None,
+            timeout_ms: default_telemt_api_timeout_ms(),
+            allow_file_fallback: default_allow_file_fallback(),
+            prefer_api_links: default_prefer_api_links(),
         }
     }
 }
@@ -79,6 +111,22 @@ fn default_allow_auto_approve_tokens() -> bool {
     true
 }
 
+fn default_telemt_api_base_url() -> String {
+    "http://127.0.0.1:9091".to_string()
+}
+
+fn default_telemt_api_timeout_ms() -> u64 {
+    5_000
+}
+
+fn default_allow_file_fallback() -> bool {
+    true
+}
+
+fn default_prefer_api_links() -> bool {
+    true
+}
+
 impl Config {
     pub fn load(path: &std::path::Path) -> Result<Self, anyhow::Error> {
         tracing::debug!("Loading config from {}", path.display());
@@ -100,6 +148,11 @@ impl Config {
             db_path = %config.db_path.display(),
             service_name = %config.service_name,
             users_page_size = config.users_page_size,
+            telemt_api_enabled = config.telemt_api.enabled,
+            telemt_api_base_url = %config.telemt_api.base_url,
+            telemt_api_timeout_ms = config.telemt_api.timeout_ms,
+            telemt_api_allow_file_fallback = config.telemt_api.allow_file_fallback,
+            telemt_api_prefer_api_links = config.telemt_api.prefer_api_links,
             security_default_days = config.security.default_token_days,
             security_max_days = config.security.max_token_days,
             allow_auto_approve_tokens = config.security.allow_auto_approve_tokens,

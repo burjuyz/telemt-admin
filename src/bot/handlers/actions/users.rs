@@ -1,7 +1,7 @@
 use super::access::approve_user_direct_and_build_link;
 use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card};
-use crate::bot::handlers::shared::{parse_create_target, CreateTarget};
-use crate::bot::handlers::state::{telemt_username, BotState};
+use crate::bot::handlers::shared::{CreateTarget, parse_create_target};
+use crate::bot::handlers::state::{BotState, telemt_username};
 use teloxide::prelude::{Bot, ChatId, Requester};
 
 enum UserLookupTarget {
@@ -78,7 +78,10 @@ pub async fn prompt_delete_confirmation(
             {
                 bot.send_message(
                     chat_id,
-                    format!("Активный пользователь с Telegram ID {} не найден.", tg_user_id),
+                    format!(
+                        "Активный пользователь с Telegram ID {} не найден.",
+                        tg_user_id
+                    ),
                 )
                 .await?;
                 return Ok(false);
@@ -107,22 +110,31 @@ pub async fn open_user_from_lookup_input(
             match state.db.find_tg_user_id_by_username(&username).await? {
                 Some(id) => id,
                 None => {
-                    bot.send_message(chat_id, format!("Пользователь @{} не найден в базе.", username))
-                        .await?;
+                    bot.send_message(
+                        chat_id,
+                        format!("Пользователь @{} не найден в базе.", username),
+                    )
+                    .await?;
                     return Ok(false);
                 }
             }
         }
         None => {
-            bot.send_message(chat_id, "Укажите Telegram ID или @username одним сообщением.")
-                .await?;
+            bot.send_message(
+                chat_id,
+                "Укажите Telegram ID или @username одним сообщением.",
+            )
+            .await?;
             return Ok(false);
         }
     };
 
     let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
-        bot.send_message(chat_id, format!("Активный пользователь {} не найден.", tg_user_id))
-            .await?;
+        bot.send_message(
+            chat_id,
+            format!("Активный пользователь {} не найден.", tg_user_id),
+        )
+        .await?;
         return Ok(false);
     };
 

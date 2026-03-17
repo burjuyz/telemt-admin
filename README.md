@@ -33,7 +33,7 @@
 
 - **Для пользователей:** простая регистрация через бота по пригласительному токену.
 - **Для администраторов:** гибкое управление доступом (временные токены, лимиты использований), мгновенные уведомления и управление через кнопки.
-- **Для сервера:** автоматическое обновление конфигурации и безопасное применение изменений через `systemd`.
+- **Для сервера:** управление пользователями через control API `telemt` с fallback на legacy-конфиг и `systemd`.
 
 Интерфейс бота построен по модели, близкой к `BotFather`:
 
@@ -96,6 +96,9 @@ port = 443
 
 [server.api]
 enabled = true
+listen = "127.0.0.1:9091"
+whitelist = ["127.0.0.1/32", "::1/128"]
+auth_header = "Bearer <generated-secret>"
 
 [censorship]
 tls_domain = "site.example"
@@ -139,6 +142,14 @@ default_token_days = 14
 max_token_days = 180
 allow_auto_approve_tokens = true
 wizard_state_ttl_seconds = 86400 # опционально: TTL wizard-state в секундах
+
+[telemt_api]
+enabled = true
+base_url = "http://127.0.0.1:9091"
+auth_header = "Bearer ВАШ_ТОЧНЫЙ_AUTH_HEADER"
+timeout_ms = 5000
+allow_file_fallback = true
+prefer_api_links = true
 ```
 
 > [!TIP]
@@ -212,7 +223,7 @@ sudo chown :telemt /etc/telemt.toml
 sudo chmod 664 /etc/telemt.toml
 ```
 
-При такой настройке у пользователя `telemt-admin` есть право **записывать в файл** `/etc/telemt.toml`, но нет права **создавать новые файлы** в каталоге `/etc/`. Поэтому в логах при изменении конфига может появляться предупреждение: `No permission to create temporary file; falling back to direct write target_path=/etc/telemt.toml`. Это ожидаемо: бот записывает конфиг напрямую в файл, функциональность не страдает.
+При такой настройке у пользователя `telemt-admin` есть право **читать fallback-конфиг** и при необходимости использовать legacy-путь записи в `/etc/telemt.toml`. В штатном режиме новые установки используют control API `telemt`, поэтому прямое редактирование файла больше не является основным механизмом.
 
 ### 4. Запустите сервис
 
@@ -238,7 +249,7 @@ sudo systemctl enable --now telemt-admin.service
 
 При поступлении новой заявки (по Manual-токену) вы получите сообщение с кнопками:
 
-- **✅ Одобрить**: генерация секрета, добавление в конфиг, отправка `HUP` главному процессу `telemt` через `systemd` (с fallback на `restart`), отправка ссылки пользователю.
+- **✅ Одобрить**: генерация секрета, создание пользователя через control API `telemt`, сохранение локальной записи в БД, отправка ссылки пользователю. При сбое API возможен fallback на legacy-конфиг и `systemd`.
 - **❌ Отклонить**: заявка отклоняется, пользователь получает уведомление.
 
 В разделе `Заявки` доступен страничный список: новые заявки находятся выше, после открытия карточки можно вернуться на ту же страницу.
@@ -300,6 +311,13 @@ sudo systemctl enable --now telemt-admin.service
 - `db_path` — путь к `state.db` (default: `/var/lib/telemt-admin/state.db`).
 - `service_name` — имя сервиса (default: `telemt.service`).
 - `users_page_size` — размер страницы списков в админском интерфейсе, включая пользователей, invite-токены и заявки (default: `10`).
+- `[telemt_api]` — настройки control API `telemt`:
+  - `enabled` — включить API-first backend.
+  - `base_url` — базовый URL control API, например `http://127.0.0.1:9091`.
+  - `auth_header` — точное значение заголовка `Authorization`, которое ожидает `telemt`.
+  - `timeout_ms` — таймаут HTTP-клиента.
+  - `allow_file_fallback` — разрешить fallback на legacy-конфиг и `systemd`, если API недоступен.
+  - `prefer_api_links` — приоритетно использовать ссылки, которые вернул control API.
 - `[security]` — настройки безопасности токенов:
   - `default_token_days` — срок жизни токена по умолчанию (default: 14).
   - `max_token_days` — максимально допустимый срок (default: 180).
@@ -386,11 +404,11 @@ sudo systemctl restart telemt-admin.service
 - `Не задан bot_token...`  
   Укажите `bot_token` в конфиге или задайте `TELOXIDE_TOKEN` в окружении сервиса.
 
-- `Permission denied` при записи в `/etc/telemt.toml`  
-  Проверьте группу/права файла и что пользователь `telemt-admin` входит в нужную группу.
+- `telemt API error ...`  
+  Проверьте, что в `telemt` включён `[server.api]`, bind доступен с машины бота, а `telemt_api.auth_header` в `telemt-admin.toml` в точности совпадает с `server.api.auth_header`.
 
-- `No permission to create temporary file; falling back to direct write`  
-  Ожидаемо при настройке прав через группу (см. раздел «Настройте права на конфиг telemt»): в `/etc/` нельзя создавать временные файлы, запись идёт напрямую в `telemt.toml`. Ошибкой не является.
+- `Permission denied` при записи в `/etc/telemt.toml`  
+  Это важно только для fallback-режима. Проверьте группу/права файла и что пользователь `telemt-admin` входит в нужную группу `telemt`.
 
 - Не удаётся выполнить `/service restart` или автоматическое применение конфига  
   Проверьте правило Polkit для `org.freedesktop.systemd1.manage-units`, корректность `service_name` и что у пользователя сервиса есть доступ к `telemt.service`.

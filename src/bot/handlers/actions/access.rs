@@ -1,19 +1,12 @@
 use crate::bot::handlers::format::format_timestamp;
 use crate::bot::handlers::shared::HandlerResult;
-use crate::bot::handlers::state::{clear_wizard_state, telemt_username, BotState};
+use crate::bot::handlers::state::{BotState, clear_wizard_state, telemt_username};
 use crate::db::{
     ConsumedInviteToken, RegisterResult, RegistrationRequest, TokenConsumeError, TokenMode,
 };
-use crate::link::{build_proxy_link, generate_user_secret};
+use crate::link::generate_user_secret;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Message, Requester};
-
-async fn reload_telemt_after_config_change(state: &BotState) {
-    let reload = state.service.notify_config_reloaded().await;
-    if !reload.success {
-        tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
-    }
-}
 
 async fn notify_auto_approve(
     bot: &Bot,
@@ -109,20 +102,35 @@ pub async fn approve_request_and_build_link(
 
     let telemt_user = telemt_username(request.tg_user_id);
     let user_secret = generate_user_secret();
-
-    state.telemt_cfg.upsert_user(&telemt_user, &user_secret)?;
-    reload_telemt_after_config_change(state).await;
+    let provisioned = state
+        .telemt_backend
+        .provision_user(&telemt_user, &user_secret)
+        .await?;
     if state
         .db
-        .approve(request_id, &telemt_user, &user_secret)
+        .approve(request_id, &telemt_user, &provisioned.secret)
         .await?
         .is_none()
     {
         return Ok(None);
     }
-
-    let link_params = state.telemt_cfg.read_link_params()?;
-    let proxy_link = build_proxy_link(&link_params, &user_secret)?;
+    state
+        .db
+        .mark_sync_state(
+            request.tg_user_id,
+            provisioned.mode.as_str(),
+            provisioned.revision.as_deref(),
+            None,
+        )
+        .await?;
+    let proxy_link = if let Some(link) = provisioned.link {
+        link
+    } else {
+        state
+            .telemt_backend
+            .build_user_link(&telemt_user, Some(&provisioned.secret))
+            .await?
+    };
     Ok(Some((request, proxy_link)))
 }
 
@@ -134,8 +142,10 @@ pub async fn approve_user_direct_and_build_link(
 ) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     let secret = generate_user_secret();
-    state.telemt_cfg.upsert_user(&telemt_user, &secret)?;
-    reload_telemt_after_config_change(state).await;
+    let provisioned = state
+        .telemt_backend
+        .provision_user(&telemt_user, &secret)
+        .await?;
     state
         .db
         .set_approved(
@@ -143,12 +153,26 @@ pub async fn approve_user_direct_and_build_link(
             tg_username,
             tg_display_name,
             &telemt_user,
-            &secret,
+            &provisioned.secret,
         )
         .await?;
-
-    let params = state.telemt_cfg.read_link_params()?;
-    build_proxy_link(&params, &secret).map_err(anyhow::Error::from)
+    state
+        .db
+        .mark_sync_state(
+            tg_user_id,
+            provisioned.mode.as_str(),
+            provisioned.revision.as_deref(),
+            None,
+        )
+        .await?;
+    if let Some(link) = provisioned.link {
+        Ok(link)
+    } else {
+        state
+            .telemt_backend
+            .build_user_link(&telemt_user, Some(&provisioned.secret))
+            .await
+    }
 }
 
 pub async fn process_invite_token(
@@ -207,8 +231,10 @@ pub async fn process_invite_token(
                 .await?;
             match result {
                 RegisterResult::Approved(secret) => {
-                    let params = state.telemt_cfg.read_link_params()?;
-                    let link = build_proxy_link(&params, &secret)?;
+                    let link = state
+                        .telemt_backend
+                        .build_user_link(&telemt_username(tg_user_id), Some(&secret))
+                        .await?;
                     bot.send_message(msg.chat.id, format!("Ваша ссылка на прокси:\n\n{}", link))
                         .await?;
                     clear_wizard_state(state, tg_user_id).await?;
@@ -272,9 +298,11 @@ pub async fn send_user_link(
 ) -> HandlerResult {
     let maybe = state.db.get_approved(tg_user_id).await?;
     match maybe {
-        Some((_, secret)) => {
-            let params = state.telemt_cfg.read_link_params()?;
-            let link = build_proxy_link(&params, &secret)?;
+        Some((telemt_user, secret)) => {
+            let link = state
+                .telemt_backend
+                .build_user_link(&telemt_user, Some(&secret))
+                .await?;
             bot.send_message(chat_id, format!("Ваша ссылка на прокси:\n\n{}", link))
                 .await?;
         }
@@ -307,11 +335,22 @@ pub async fn send_user_link(
 
 pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
-    let removed_from_cfg = state.telemt_cfg.remove_user(&telemt_user)?;
-    if removed_from_cfg {
-        reload_telemt_after_config_change(state).await;
-    }
+    let removed_from_cfg = state.telemt_backend.delete_user(&telemt_user).await?;
     let removed_from_db = state.db.deactivate_user(tg_user_id).await?;
+    let sync_error = if removed_from_cfg {
+        None
+    } else {
+        Some("user_not_found_in_backend")
+    };
+    state
+        .db
+        .mark_sync_state(
+            tg_user_id,
+            state.telemt_backend.mode().as_str(),
+            None,
+            sync_error,
+        )
+        .await?;
 
     if removed_from_cfg || removed_from_db {
         Ok(format!("Пользователь {} удалён", telemt_user))

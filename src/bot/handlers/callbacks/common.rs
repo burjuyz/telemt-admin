@@ -1,6 +1,8 @@
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::shared::{callback_message_target, require_admin_callback, HandlerResult};
-use crate::bot::handlers::state::{clear_wizard_state, set_wizard_state, BotState, WizardState};
+use crate::bot::handlers::shared::{
+    HandlerResult, callback_message_target, require_admin_callback,
+};
+use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
 use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::prelude::{Bot, CallbackQuery, ChatId, Requester};
 use teloxide::types::{CallbackQueryId, MessageId};
@@ -58,12 +60,12 @@ pub async fn start_wizard_from_callback(
         return Ok(());
     };
     let wizard_state = match action {
-        CallbackAction::PromptUserLookup { page } => WizardState::AdminFindUserAwaitingTarget {
-            page,
-        },
-        CallbackAction::PromptTokenLookup { page } => WizardState::AdminFindTokenAwaitingCode {
-            page,
-        },
+        CallbackAction::PromptUserLookup { page } => {
+            WizardState::AdminFindUserAwaitingTarget { page }
+        }
+        CallbackAction::PromptTokenLookup { page } => {
+            WizardState::AdminFindTokenAwaitingCode { page }
+        }
         CallbackAction::PromptTokenCreate { auto_approve } => {
             WizardState::AdminTokenCreateAwaitingParams { auto_approve }
         }

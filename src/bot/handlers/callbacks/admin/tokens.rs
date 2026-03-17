@@ -36,7 +36,10 @@ pub async fn handle(
                     format_hint
                 )
             } else {
-                format!("Отправьте параметры токена следующим сообщением.\n\n{}", format_hint)
+                format!(
+                    "Отправьте параметры токена следующим сообщением.\n\n{}",
+                    format_hint
+                )
             };
             start_wizard_from_callback(
                 bot,

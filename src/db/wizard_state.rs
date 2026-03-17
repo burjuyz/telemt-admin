@@ -1,4 +1,4 @@
-use crate::db::{current_unix_timestamp, Db};
+use crate::db::{Db, current_unix_timestamp};
 
 impl Db {
     pub async fn get_wizard_state(&self, tg_user_id: i64) -> Result<Option<String>, anyhow::Error> {

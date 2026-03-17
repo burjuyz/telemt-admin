@@ -6,7 +6,6 @@ use super::format::{
 use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
 use crate::db::{AdminActivity, AdminActivityKind, RequestStatus};
-use crate::link::build_proxy_link;
 use std::future::Future;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardMarkup, InputFile, KeyboardRemove, MessageId};
@@ -67,11 +66,8 @@ where
         return Ok(());
     }
 
-    let (page, total_pages, offset) = page_bounds(
-        config.total_items,
-        config.page_size,
-        config.requested_page,
-    );
+    let (page, total_pages, offset) =
+        page_bounds(config.total_items, config.page_size, config.requested_page);
     let rows = load_items(config.page_size, offset).await?;
     let items: Vec<(i64, String)> = rows.iter().map(map_item).collect();
     let text = text_builder(config.total_items, page, total_pages);
@@ -176,12 +172,92 @@ async fn render_service_panel_text(
         "Пользователи: {} | Заявки: {} | Токены: {}",
         stats.approved, stats.pending, active_tokens
     ));
+    lines.push(format!(
+        "Backend: {}",
+        match state.telemt_backend.mode() {
+            crate::telemt_backend::TelemtBackendMode::LegacyFile => "legacy file/systemd",
+            crate::telemt_backend::TelemtBackendMode::ControlApi => "control API",
+        }
+    ));
 
     if let Some(exec_status) = summary.exec_main_status {
         lines.push(format!("Код процесса: {}", exec_status));
     }
     if let Some(error) = &summary.error {
         lines.push(format!("Ошибка статуса: {}", compact_line(error, 90)));
+    }
+
+    if let Some(snapshot) = state.telemt_backend.runtime_snapshot(6).await? {
+        lines.push(String::new());
+        lines.push("Control API:".to_string());
+        lines.push(format!("• Источник: {}", snapshot.source.as_str()));
+        lines.push(format!("• Health: {}", snapshot.health_status));
+        lines.push(format!(
+            "• API read-only: {}",
+            if snapshot.api_read_only {
+                "да"
+            } else {
+                "нет"
+            }
+        ));
+        if let Some(version) = snapshot.build_version {
+            lines.push(format!("• Версия telemt: {}", version));
+        }
+        if let Some(transport_mode) = snapshot.transport_mode {
+            lines.push(format!("• Транспорт: {}", transport_mode));
+        }
+        if let Some(startup_status) = snapshot.startup_status {
+            let progress = snapshot
+                .startup_progress_pct
+                .map(|value| format!("{:.1}%", value))
+                .unwrap_or_else(|| "—".to_string());
+            lines.push(format!("• Startup: {} ({})", startup_status, progress));
+        }
+        if let Some(stage) = snapshot.startup_stage {
+            lines.push(format!("• Этап: {}", compact_line(&stage, 60)));
+        }
+        if let Some(enabled) = snapshot.api_whitelist_enabled {
+            let entries = snapshot
+                .api_whitelist_entries
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            lines.push(format!(
+                "• API whitelist: {} ({})",
+                if enabled {
+                    "включён"
+                } else {
+                    "выключен"
+                },
+                entries
+            ));
+        }
+        if let Some(enabled) = snapshot.api_auth_header_enabled {
+            lines.push(format!(
+                "• API auth header: {}",
+                if enabled {
+                    "включён"
+                } else {
+                    "выключен"
+                }
+            ));
+        }
+        if let Some(revision) = snapshot.last_revision {
+            lines.push(format!("• Revision: {}", compact_line(&revision, 24)));
+        }
+        lines.push(String::new());
+        lines.push("События control API:".to_string());
+        if snapshot.events.is_empty() {
+            lines.push("• нет данных".to_string());
+        } else {
+            for event in snapshot.events.iter().take(4) {
+                lines.push(format!(
+                    "• {} · {} · {}",
+                    format_timestamp(event.ts_epoch_secs),
+                    compact_line(&event.event_type, 28),
+                    compact_line(&event.context, 42)
+                ));
+            }
+        }
     }
 
     lines.push(String::new());
@@ -428,7 +504,12 @@ pub async fn admin_show_pending_requests_page(
             empty_keyboard: crate::bot::keyboards::admin_home_keyboard(),
         },
         |limit, offset| state.db.list_pending_requests_page(limit, offset),
-        |req| (req.id, format!("📋 #{} · {}", req.id, user_display_name(req))),
+        |req| {
+            (
+                req.id,
+                format!("📋 #{} · {}", req.id, user_display_name(req)),
+            )
+        },
         |total, page, total_pages| {
             format!(
                 "📥 Заявки · {}\nСтраница: {}/{}\n\nВыберите заявку.",
@@ -554,7 +635,11 @@ pub async fn admin_show_stats(
         format!("Статус: {}", status_label),
         format!(
             "Проверка systemd: {}",
-            if summary.success { "OK" } else { "Ошибка" }
+            if summary.success {
+                "OK"
+            } else {
+                "Ошибка"
+            }
         ),
         format!(
             "Unit: {} | PID: {}",
@@ -675,9 +760,14 @@ pub async fn send_user_qr_to_admin(
     let Some(secret) = user.secret.as_deref() else {
         return Err(anyhow::anyhow!("Не найден секрет пользователя"));
     };
+    let Some(telemt_username) = user.telemt_username.as_deref() else {
+        return Err(anyhow::anyhow!("Не найден telemt username пользователя"));
+    };
 
-    let params = state.telemt_cfg.read_link_params()?;
-    let link = build_proxy_link(&params, secret)?;
+    let link = state
+        .telemt_backend
+        .build_user_link(telemt_username, Some(secret))
+        .await?;
     let qr_png = build_user_qr_png_bytes(&link)?;
     let caption = format!(
         "👤 {} ({})\n\n🔗 {}",

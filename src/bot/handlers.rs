@@ -1,9 +1,9 @@
 //! Обработчики команд пользователя и админа.
 
-#[path = "handlers/callback_data.rs"]
-pub mod callback_data;
 #[path = "handlers/actions/mod.rs"]
 mod actions;
+#[path = "handlers/callback_data.rs"]
+pub mod callback_data;
 #[path = "handlers/callbacks/mod.rs"]
 mod callbacks;
 #[path = "handlers/commands/mod.rs"]

@@ -12,6 +12,10 @@ impl Db {
                 status TEXT NOT NULL DEFAULT 'pending',
                 telemt_username TEXT,
                 secret TEXT,
+                backend_mode TEXT,
+                last_sync_error TEXT,
+                last_seen_revision TEXT,
+                last_synced_at INTEGER,
                 created_at INTEGER NOT NULL,
                 resolved_at INTEGER,
                 UNIQUE(tg_user_id)
@@ -35,6 +39,15 @@ impl Db {
                 .execute(&self.pool)
                 .await?;
         }
+
+        self.ensure_column_exists("registration_requests", "backend_mode", "TEXT")
+            .await?;
+        self.ensure_column_exists("registration_requests", "last_sync_error", "TEXT")
+            .await?;
+        self.ensure_column_exists("registration_requests", "last_seen_revision", "TEXT")
+            .await?;
+        self.ensure_column_exists("registration_requests", "last_synced_at", "INTEGER")
+            .await?;
 
         sqlx::query(
             r#"

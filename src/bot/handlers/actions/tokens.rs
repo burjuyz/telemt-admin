@@ -53,8 +53,11 @@ pub async fn handle_token_create_from_text(
         security.default_token_days
     );
     if auto_approve && !security.allow_auto_approve_tokens {
-        bot.send_message(chat_id, "Автоподтверждение токенов запрещено в конфигурации.")
-            .await?;
+        bot.send_message(
+            chat_id,
+            "Автоподтверждение токенов запрещено в конфигурации.",
+        )
+        .await?;
         return Ok(false);
     }
 
@@ -84,8 +87,11 @@ pub async fn handle_token_create_from_text(
                     }
                 };
                 if max_uses.is_some() {
-                    bot.send_message(chat_id, "Лимит использований можно указать только один раз.")
-                        .await?;
+                    bot.send_message(
+                        chat_id,
+                        "Лимит использований можно указать только один раз.",
+                    )
+                    .await?;
                     return Ok(false);
                 }
                 max_uses = Some(parsed);
@@ -121,8 +127,11 @@ pub async fn handle_token_create_from_text(
     }
     if let Some(parsed_max_uses) = positional_numbers.get(1).copied() {
         if max_uses.is_some() {
-            bot.send_message(chat_id, "Лимит использований можно указать только один раз.")
-                .await?;
+            bot.send_message(
+                chat_id,
+                "Лимит использований можно указать только один раз.",
+            )
+            .await?;
             return Ok(false);
         }
         max_uses = Some(parsed_max_uses);

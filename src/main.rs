@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod link;
 mod service;
+mod telemt_backend;
 mod telemt_cfg;
 mod update;
 
@@ -61,6 +62,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Arc::new(db::Db::open(&config.db_path, config.security.wizard_state_ttl_seconds).await?);
     let telemt_cfg = Arc::new(telemt_cfg::TelemtConfig::new(&config.telemt_config_path));
     let service = service::ServiceController::new(&config.service_name);
+    let telemt_backend = telemt_backend::TelemtBackend::new(
+        &config.telemt_api,
+        telemt_cfg.clone(),
+        service.clone(),
+    )?;
 
     let bot = Bot::new(token);
     let bot_username = match bot.get_me().await {
@@ -100,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = bot::handlers::BotState {
         config,
         db,
-        telemt_cfg,
+        telemt_backend,
         service,
         bot_username,
     };

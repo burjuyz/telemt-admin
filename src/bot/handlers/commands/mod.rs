@@ -4,9 +4,7 @@ use super::screens::{
     admin_show_service_panel, admin_show_users_page, send_text_with_keyboard_removed,
     show_admin_home, show_token_menu, show_user_home,
 };
-use super::shared::{
-    HandlerResult, parse_start_token, send_admin_backend_error, user_id_or_reply,
-};
+use super::shared::{HandlerResult, parse_start_token, send_admin_backend_error, user_id_or_reply};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
     sender_user_id, set_wizard_state,

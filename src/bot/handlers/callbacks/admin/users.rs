@@ -6,7 +6,7 @@ use crate::bot::handlers::screens::{
     admin_show_users_page, send_user_qr_to_admin, show_user_ban_confirm, show_user_card,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
-use crate::bot::handlers::state::{clear_wizard_state, BotState};
+use crate::bot::handlers::state::{BotState, clear_wizard_state};
 use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
 

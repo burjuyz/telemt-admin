@@ -2,9 +2,7 @@ use super::super::common::{ack_callback, admin_callback_target};
 use super::AdminActionResult;
 use crate::bot::handlers::actions::approve_request_and_build_link;
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::screens::{
-    admin_show_pending_requests_page, show_pending_request_card,
-};
+use crate::bot::handlers::screens::{admin_show_pending_requests_page, show_pending_request_card};
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
 use crate::bot::handlers::state::BotState;
 use teloxide::payloads::EditMessageTextSetters;
@@ -39,7 +37,8 @@ pub async fn handle(
             };
             let Some(request) = state.db.get_pending_by_id(request_id).await? else {
                 ack_callback(bot, q.id.clone(), Some("Заявка уже обработана"), false).await?;
-                admin_show_pending_requests_page(bot, chat_id, state, page, Some(message_id)).await?;
+                admin_show_pending_requests_page(bot, chat_id, state, page, Some(message_id))
+                    .await?;
                 return Ok(true);
             };
             ack_callback(bot, q.id.clone(), Some("Открыта заявка"), false).await?;
