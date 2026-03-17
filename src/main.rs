@@ -13,6 +13,7 @@ use clap::Parser;
 use std::sync::Arc;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
+use teloxide::types::BotCommandScope;
 
 use cli::{Cli, Commands};
 
@@ -74,10 +75,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     if let Err(error) = bot
-        .set_my_commands(bot::handlers::telegram_commands())
+        .set_my_commands(bot::handlers::public_telegram_commands())
+        .scope(BotCommandScope::Default)
         .await
     {
         tracing::warn!(error = %error, "Не удалось обновить список slash-команд бота");
+    }
+    for admin_id in &config.admin_ids {
+        if let Err(error) = bot
+            .set_my_commands(bot::handlers::admin_telegram_commands())
+            .scope(BotCommandScope::Chat {
+                chat_id: ChatId(*admin_id).into(),
+            })
+            .await
+        {
+            tracing::warn!(
+                admin_id = *admin_id,
+                error = %error,
+                "Не удалось обновить список admin slash-команд бота"
+            );
+        }
     }
 
     let state = bot::handlers::BotState {

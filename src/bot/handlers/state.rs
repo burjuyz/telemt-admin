@@ -10,8 +10,9 @@ pub enum WizardState {
     AwaitingInviteToken,
     AdminCreateAwaitingTarget,
     AdminDeleteAwaitingTarget,
+    AdminFindUserAwaitingTarget { page: i64 },
+    AdminFindTokenAwaitingCode { page: i64 },
     AdminTokenCreateAwaitingParams { auto_approve: bool },
-    AdminTokenRevokeAwaitingToken,
 }
 
 impl WizardState {
@@ -20,13 +21,18 @@ impl WizardState {
             Self::AwaitingInviteToken => "awaiting_invite_token".to_string(),
             Self::AdminCreateAwaitingTarget => "admin_create_awaiting_target".to_string(),
             Self::AdminDeleteAwaitingTarget => "admin_delete_awaiting_target".to_string(),
+            Self::AdminFindUserAwaitingTarget { page } => {
+                format!("admin_find_user:{}", (*page).max(1))
+            }
+            Self::AdminFindTokenAwaitingCode { page } => {
+                format!("admin_find_token:{}", (*page).max(1))
+            }
             Self::AdminTokenCreateAwaitingParams { auto_approve } => {
                 format!(
                     "admin_token_create:{}",
                     if *auto_approve { "auto" } else { "manual" }
                 )
             }
-            Self::AdminTokenRevokeAwaitingToken => "admin_token_revoke_awaiting_token".to_string(),
         }
     }
 
@@ -35,14 +41,25 @@ impl WizardState {
             "awaiting_invite_token" => Some(Self::AwaitingInviteToken),
             "admin_create_awaiting_target" => Some(Self::AdminCreateAwaitingTarget),
             "admin_delete_awaiting_target" => Some(Self::AdminDeleteAwaitingTarget),
-            "admin_token_revoke_awaiting_token" => Some(Self::AdminTokenRevokeAwaitingToken),
             "admin_token_create:auto" => {
                 Some(Self::AdminTokenCreateAwaitingParams { auto_approve: true })
             }
             "admin_token_create:manual" => Some(Self::AdminTokenCreateAwaitingParams {
                 auto_approve: false,
             }),
-            _ => None,
+            _ => {
+                if let Some(value) = value.strip_prefix("admin_find_user:") {
+                    return Some(Self::AdminFindUserAwaitingTarget {
+                        page: value.parse::<i64>().ok()?.max(1),
+                    });
+                }
+                if let Some(value) = value.strip_prefix("admin_find_token:") {
+                    return Some(Self::AdminFindTokenAwaitingCode {
+                        page: value.parse::<i64>().ok()?.max(1),
+                    });
+                }
+                None
+            }
         }
     }
 }

@@ -1,49 +1,56 @@
+use super::actions::{process_invite_token, send_user_link};
 use super::callback_data::CallbackAction;
-use super::format::{format_date, format_mode, render_invite_token_line};
 use super::screens::{
-    admin_show_service_panel, send_text_with_keyboard_removed, show_admin_home,
-    show_delete_user_confirm, show_token_menu, show_user_home,
+    admin_show_service_panel, admin_show_users_page, send_text_with_keyboard_removed,
+    show_admin_home, show_token_menu, show_user_home,
 };
 use super::shared::{
-    CreateTarget, HandlerResult, approve_request_and_build_link,
-    approve_user_direct_and_build_link, build_bot_start_link, parse_create_target,
-    parse_start_token, process_invite_token, send_user_link, user_id_or_reply,
+    HandlerResult, parse_start_token, send_admin_backend_error, user_id_or_reply,
 };
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
-    sender_user_id, set_wizard_state, telemt_username,
+    sender_user_id, set_wizard_state,
 };
 use crate::db::RequestStatus;
 use teloxide::dptree;
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
+use teloxide::types::BotCommand;
 use teloxide::utils::command::BotCommands;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
-pub enum BotCommand {
-    #[command(description = "Главный экран / регистрация")]
+pub enum PublicBotCommand {
+    #[command(description = "🏠 Главный экран")]
     Start,
-    #[command(description = "Получить ссылку на прокси")]
+    #[command(description = "🔗 Получить ссылку")]
     Link,
-    #[command(description = "Справка")]
+    #[command(description = "❓ Справка")]
     Help,
-    #[command(description = "Одобрить заявку (админ)")]
-    Approve,
-    #[command(description = "Отклонить заявку (админ)")]
-    Reject,
-    #[command(description = "Создать пользователя (админ)")]
-    Create,
-    #[command(description = "Удалить пользователя (админ)")]
-    Delete,
-    #[command(description = "Управление сервисом (админ)")]
-    Service,
-    #[command(description = "Управление invite-токенами (админ)")]
-    Token,
 }
 
-pub fn telegram_commands() -> Vec<teloxide::types::BotCommand> {
-    BotCommand::bot_commands()
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase")]
+pub enum AdminBotCommand {
+    #[command(description = "🏠 Главный экран")]
+    Start,
+    #[command(description = "👥 Пользователи")]
+    User,
+    #[command(description = "🎟 Управление токенами")]
+    Token,
+    #[command(description = "⚙️ Управление сервисом")]
+    Service,
+    #[command(description = "🔗 Получить ссылку")]
+    Link,
+    #[command(description = "❓ Справка")]
+    Help,
+}
+
+pub fn public_telegram_commands() -> Vec<BotCommand> {
+    PublicBotCommand::bot_commands()
+}
+
+pub fn admin_telegram_commands() -> Vec<BotCommand> {
+    AdminBotCommand::bot_commands()
 }
 
 pub fn handler()
@@ -70,6 +77,24 @@ fn extract_command_name<'a>(text: &'a str, bot_username: Option<&str>) -> Option
 }
 
 async fn handle_command_message(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
+    let command_label = msg
+        .text()
+        .and_then(|text| extract_command_name(text, state.bot_username.as_deref()))
+        .map(|name| format!("/{}", name))
+        .unwrap_or_else(|| "неизвестная команда".to_string());
+    let is_admin = is_admin_message(&msg, &state);
+    let chat_id = msg.chat.id;
+    let result = handle_command_message_inner(bot.clone(), msg, state).await;
+    if let Err(error) = result {
+        tracing::error!(command = %command_label, error = %error, "Ошибка выполнения команды");
+        if is_admin {
+            send_admin_backend_error(&bot, chat_id, &command_label, error.as_ref()).await;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_command_message_inner(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     let Some(text) = msg.text() else {
         return Ok(());
     };
@@ -81,10 +106,7 @@ async fn handle_command_message(bot: Bot, msg: Message, state: BotState) -> Hand
         "start" => start_cmd(bot, msg, state).await,
         "link" => cmd_link(bot, msg, state).await,
         "help" => cmd_help(bot, msg, state).await,
-        "approve" => cmd_approve(bot, msg, state).await,
-        "reject" => cmd_reject(bot, msg, state).await,
-        "create" => cmd_create(bot, msg, state).await,
-        "delete" => cmd_delete(bot, msg, state).await,
+        "user" => cmd_user(bot, msg, state).await,
         "service" => cmd_service(bot, msg, state).await,
         "token" => cmd_token(bot, msg, state).await,
         _ => {
@@ -102,25 +124,21 @@ pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult 
     let is_admin = state.config.is_admin(user_id);
     let text = if is_admin {
         r#"Команды:
-/start — открыть главный экран администратора
-/help — показать эту справку
-/service — открыть панель управления сервисом
-/token — открыть меню invite-токенов
-/create — запустить создание пользователя
-/delete — запустить удаление пользователя
-/approve <id> — быстро одобрить заявку
-/reject <id> — быстро отклонить заявку
+/start — главный экран
+/user — пользователи
+/token — токены
+/service — сервис
+/link — моя ссылка
+/help — справка
 
-Подсказка:
-- сложные сценарии запускаются через slash-команды и продолжаются inline-кнопками;
-- старые аргументы `/service ...` и `/token ...` по-прежнему поддерживаются."#
+Основные действия выполняются внутри разделов через кнопки."#
     } else {
         r#"Команды:
-/start — начать регистрацию или открыть главный экран
-/link — получить ссылку на прокси
-/help — показать справку
+/start — главный экран
+/link — получить ссылку
+/help — справка
 
-Дальше бот сам подскажет, какой шаг нужен: ввести invite-токен, дождаться одобрения или забрать ссылку."#
+Если доступа ещё нет, бот подскажет следующий шаг."#
     };
     send_text_with_keyboard_removed(&bot, msg.chat.id, text).await?;
     Ok(())
@@ -206,162 +224,16 @@ async fn cmd_link(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     .await
 }
 
-async fn cmd_approve(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
+async fn cmd_user(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     if !is_admin_message(&msg, &state) {
         return Ok(());
     }
-
-    let text = msg.text().unwrap_or("");
-    let request_id: i64 = match text.split_whitespace().nth(1).unwrap_or("").parse() {
-        Ok(id) => id,
-        Err(_) => {
-            bot.send_message(msg.chat.id, "Использование: /approve <request_id>")
-                .await?;
-            return Ok(());
-        }
-    };
-    tracing::info!(request_id = request_id, "Admin command /approve");
-
-    let (request, link) = match approve_request_and_build_link(&state, request_id).await? {
-        Some(payload) => payload,
-        None => {
-            bot.send_message(msg.chat.id, "Заявка не найдена или уже обработана")
-                .await?;
-            return Ok(());
-        }
-    };
-
-    bot.send_message(
-        msg.chat.id,
-        format!("Одобрено. Ссылка отправлена пользователю.\n{}", link),
-    )
-    .await?;
-    bot.send_message(
-        ChatId(request.tg_user_id),
-        format!("Ваша ссылка на прокси:\n\n{}", link),
-    )
-    .await?;
-    Ok(())
-}
-
-async fn cmd_reject(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
-    if !is_admin_message(&msg, &state) {
-        return Ok(());
-    }
-
-    let text = msg.text().unwrap_or("");
-    let request_id: i64 = match text.split_whitespace().nth(1).unwrap_or("").parse() {
-        Ok(id) => id,
-        Err(_) => {
-            bot.send_message(msg.chat.id, "Использование: /reject <request_id>")
-                .await?;
-            return Ok(());
-        }
-    };
-    tracing::info!(request_id = request_id, "Admin command /reject");
-
-    let req = state.db.reject(request_id).await?;
-    if let Some(r) = req {
-        bot.send_message(msg.chat.id, "Заявка отклонена").await?;
-        bot.send_message(
-            ChatId(r.tg_user_id),
-            "Ваша заявка на регистрацию отклонена администратором.",
-        )
-        .await?;
-    } else {
-        bot.send_message(msg.chat.id, "Заявка не найдена или уже обработана")
-            .await?;
-    }
-    Ok(())
-}
-
-async fn cmd_create(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
-    if !is_admin_message(&msg, &state) {
-        return Ok(());
-    }
-
-    let text = msg.text().unwrap_or("");
-    let arg = text.split_whitespace().nth(1).unwrap_or("");
-    let user_id = sender_user_id(&msg).unwrap_or_default();
-    if arg.is_empty() {
-        clear_wizard_state(&state, user_id).await?;
-        set_wizard_state(&state, user_id, WizardState::AdminCreateAwaitingTarget).await?;
-        bot.send_message(
-            msg.chat.id,
-            "Отправьте Telegram ID или @username следующим сообщением.\n\n\
-Для варианта с @username пользователь должен раньше написать боту /start.",
-        )
-        .reply_markup(crate::bot::keyboards::cancel_keyboard(
-            CallbackAction::ShowAdminHome,
-        ))
-        .await?;
-        return Ok(());
-    }
-
-    let _ = create_user_from_input(&bot, msg.chat.id, &state, arg).await?;
-    Ok(())
-}
-
-async fn cmd_delete(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
-    if !is_admin_message(&msg, &state) {
-        return Ok(());
-    }
-
-    let text = msg.text().unwrap_or("");
-    let user_id = sender_user_id(&msg).unwrap_or_default();
-    match text.split_whitespace().nth(1) {
-        Some(arg) => {
-            let _ = prompt_delete_confirmation(&bot, msg.chat.id, &state, arg).await?;
-        }
-        None => {
-            if !has_active_users(&state).await? {
-                clear_wizard_state(&state, user_id).await?;
-                bot.send_message(msg.chat.id, "Активных пользователей нет, удалять некого.")
-                    .await?;
-                return Ok(());
-            }
-            clear_wizard_state(&state, user_id).await?;
-            set_wizard_state(&state, user_id, WizardState::AdminDeleteAwaitingTarget).await?;
-            bot.send_message(
-                msg.chat.id,
-                "Отправьте Telegram ID пользователя, которого нужно удалить.",
-            )
-            .reply_markup(crate::bot::keyboards::cancel_keyboard(
-                CallbackAction::ShowAdminHome,
-            ))
-            .await?;
-        }
-    }
+    admin_show_users_page(&bot, msg.chat.id, &state, 1, None).await?;
     Ok(())
 }
 
 async fn cmd_service(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     if !is_admin_message(&msg, &state) {
-        return Ok(());
-    }
-
-    let text = msg.text().unwrap_or("");
-    let args: Vec<&str> = text.split_whitespace().collect();
-    if let Some(action) = args.get(1).copied() {
-        tracing::info!(action = action, "Admin command /service legacy action");
-        let (action_name, result) = match action {
-            "start" => ("start", state.service.start()),
-            "stop" => ("stop", state.service.stop()),
-            "restart" => ("restart", state.service.restart()),
-            "reload" => ("reload", state.service.reload()),
-            "status" => ("status", state.service.status()),
-            _ => {
-                bot.send_message(
-                    msg.chat.id,
-                    "Использование: /service <start|stop|status|reload|restart>",
-                )
-                .await?;
-                return Ok(());
-            }
-        };
-
-        let reply = state.service.format_result(action_name, &result);
-        bot.send_message(msg.chat.id, reply).await?;
         return Ok(());
     }
 
@@ -374,432 +246,6 @@ async fn cmd_token(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         return Ok(());
     }
 
-    let text = msg.text().unwrap_or("");
-    let args: Vec<&str> = text.split_whitespace().collect();
-    if args.len() == 1 {
-        show_token_menu(&bot, msg.chat.id, None, &state).await?;
-        return Ok(());
-    }
-
-    let Some(subcommand) = args.get(1).copied() else {
-        show_token_menu(&bot, msg.chat.id, None, &state).await?;
-        return Ok(());
-    };
-
-    match subcommand {
-        "create" => {
-            let mut days: Option<i64> = None;
-            let mut auto_approve = false;
-            let mut max_uses: Option<i64> = None;
-            let mut index = 2;
-
-            while index < args.len() {
-                match args[index] {
-                    "--auto" | "-a" => {
-                        auto_approve = true;
-                        index += 1;
-                    }
-                    "--max-uses" => {
-                        let Some(value) = args.get(index + 1) else {
-                            bot.send_message(
-                                msg.chat.id,
-                                "Использование: /token create [days] [--auto|-a] [--max-uses N]",
-                            )
-                            .await?;
-                            return Ok(());
-                        };
-                        let parsed = match value.parse::<i64>() {
-                            Ok(parsed) if parsed >= 1 => parsed,
-                            _ => {
-                                bot.send_message(
-                                    msg.chat.id,
-                                    "Параметр --max-uses должен быть целым числом >= 1.",
-                                )
-                                .await?;
-                                return Ok(());
-                            }
-                        };
-                        max_uses = Some(parsed);
-                        index += 2;
-                    }
-                    value => {
-                        if let Ok(parsed_days) = value.parse::<i64>() {
-                            if days.is_some() {
-                                bot.send_message(
-                                    msg.chat.id,
-                                    "Использование: /token create [days] [--auto|-a] [--max-uses N]",
-                                )
-                                .await?;
-                                return Ok(());
-                            }
-                            days = Some(parsed_days);
-                            index += 1;
-                            continue;
-                        }
-                        bot.send_message(
-                            msg.chat.id,
-                            "Использование: /token create [days] [--auto|-a] [--max-uses N]",
-                        )
-                        .await?;
-                        return Ok(());
-                    }
-                }
-            }
-
-            let security = &state.config.security;
-            let days = days.unwrap_or(security.default_token_days);
-            if days < 1 {
-                bot.send_message(msg.chat.id, "Срок действия должен быть не меньше 1 дня.")
-                    .await?;
-                return Ok(());
-            }
-            if days > security.max_token_days {
-                bot.send_message(
-                    msg.chat.id,
-                    format!(
-                        "Нельзя создать токен на срок больше {} дней.",
-                        security.max_token_days
-                    ),
-                )
-                .await?;
-                return Ok(());
-            }
-            if auto_approve && !security.allow_auto_approve_tokens {
-                bot.send_message(
-                    msg.chat.id,
-                    "Автоподтверждение токенов запрещено в конфигурации.",
-                )
-                .await?;
-                return Ok(());
-            }
-
-            let created_by = sender_user_id(&msg);
-            let token = state
-                .db
-                .create_invite_token(days, auto_approve, max_uses, created_by)
-                .await?;
-
-            let link_line = state
-                .bot_username
-                .as_deref()
-                .map(|bot_username| {
-                    let invite_link = build_bot_start_link(bot_username, &token.token);
-                    format!("Ссылка: {}\n", invite_link)
-                })
-                .unwrap_or_else(|| {
-                    "Ссылка: недоступна (у бота не задан username в Telegram).\n".to_string()
-                });
-
-            let response = format!(
-                "✅ Токен создан:\n\
-                 Код: <code>{}</code>\n\
-                 {}\
-                 Режим: {}\n\
-                 Действует до: {}\n\
-                 Лимит использований: {}\n\
-                 Для отзыва откройте `/token` -> список токенов -> карточку токена или используйте команду <code>/token revoke {}</code>.",
-                token.token,
-                link_line,
-                format_mode(token.auto_approve),
-                format_date(token.expires_at),
-                token
-                    .max_usage
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "без лимита".to_string()),
-                token.token
-            );
-            bot.send_message(msg.chat.id, response)
-                .parse_mode(ParseMode::Html)
-                .await?;
-        }
-        "list" => {
-            let tokens = state.db.list_active_invite_tokens(50).await?;
-            if tokens.is_empty() {
-                bot.send_message(msg.chat.id, "Активных invite-токенов нет.")
-                    .await?;
-                return Ok(());
-            }
-
-            let mut lines: Vec<String> = Vec::with_capacity(tokens.len());
-            for token in tokens {
-                lines.push(render_invite_token_line(&token));
-            }
-            let text = format!("Активные токены:\n\n{}", lines.join("\n"));
-            bot.send_message(msg.chat.id, text).await?;
-        }
-        "revoke" => {
-            let Some(token_value) = args.get(2).copied() else {
-                bot.send_message(msg.chat.id, "Использование: /token revoke <token>")
-                    .await?;
-                return Ok(());
-            };
-            let revoked = state.db.revoke_invite_token(token_value).await?;
-            if revoked {
-                bot.send_message(msg.chat.id, format!("Токен {} отозван.", token_value))
-                    .await?;
-            } else {
-                bot.send_message(msg.chat.id, "Токен не найден или уже отозван.")
-                    .await?;
-            }
-        }
-        _ => {
-            bot.send_message(
-                msg.chat.id,
-                "Использование:\n/token create [days] [--auto|-a] [--max-uses N]\n/token list\n/token revoke <token>",
-            )
-            .await?;
-        }
-    }
-
+    show_token_menu(&bot, msg.chat.id, None, &state).await?;
     Ok(())
-}
-
-pub async fn create_user_from_input(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    arg: &str,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    let tg_user_id: i64 = match parse_create_target(arg) {
-        Some(CreateTarget::UserId(id)) => id,
-        Some(CreateTarget::Username(username)) => {
-            match state.db.find_tg_user_id_by_username(&username).await? {
-                Some(user_id) => user_id,
-                None => {
-                    bot.send_message(
-                        chat_id,
-                        format!(
-                            "Пользователь @{} не найден в базе.\n\
-                             Он должен хотя бы раз отправить боту /start.",
-                            username
-                        ),
-                    )
-                    .await?;
-                    return Ok(false);
-                }
-            }
-        }
-        None => {
-            bot.send_message(chat_id, "Использование: ID или @username")
-                .await?;
-            return Ok(false);
-        }
-    };
-    tracing::info!(tg_user_id = tg_user_id, "Admin create user");
-
-    let telemt_user = telemt_username(tg_user_id);
-    let link = approve_user_direct_and_build_link(state, tg_user_id, None, None).await?;
-
-    bot.send_message(
-        chat_id,
-        format!("Пользователь {} создан.\nСсылка:\n{}", telemt_user, link),
-    )
-    .await?;
-    Ok(true)
-}
-
-pub async fn prompt_delete_confirmation(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    arg: &str,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    match arg.trim().parse::<i64>() {
-        Ok(tg_user_id) => {
-            if state
-                .db
-                .get_active_user_by_tg_user(tg_user_id)
-                .await?
-                .is_none()
-            {
-                bot.send_message(
-                    chat_id,
-                    format!(
-                        "Активный пользователь с Telegram ID {} не найден.",
-                        tg_user_id
-                    ),
-                )
-                .await?;
-                return Ok(false);
-            }
-            show_delete_user_confirm(bot, chat_id, tg_user_id).await?;
-            Ok(true)
-        }
-        Err(_) => {
-            bot.send_message(chat_id, "Нужен корректный Telegram ID пользователя.")
-                .await?;
-            Ok(false)
-        }
-    }
-}
-
-pub async fn has_active_users(
-    state: &BotState,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(state.db.count_active_users().await? > 0)
-}
-
-pub async fn handle_token_create_from_text(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    auto_approve: bool,
-    text: &str,
-    created_by: Option<i64>,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    let security = &state.config.security;
-    let format_hint = format!(
-        "Отправьте одно число (дни) или два числа: дни и лимит использований.\n\
-         По умолчанию: {} дней, лимит без ограничений.\n\
-         Примеры: 7 или 7 3.",
-        security.default_token_days
-    );
-    if auto_approve && !security.allow_auto_approve_tokens {
-        bot.send_message(
-            chat_id,
-            "Автоподтверждение токенов запрещено в конфигурации.",
-        )
-        .await?;
-        return Ok(false);
-    }
-
-    let mut days: Option<i64> = None;
-    let mut max_uses: Option<i64> = None;
-    let args: Vec<&str> = text.split_whitespace().collect();
-    let mut index = 0;
-    let mut positional_numbers: Vec<i64> = Vec::new();
-
-    if args.is_empty() {
-        days = Some(security.default_token_days);
-    }
-
-    while index < args.len() {
-        match args[index] {
-            "--max-uses" => {
-                let Some(value) = args.get(index + 1) else {
-                    bot.send_message(chat_id, &format_hint).await?;
-                    return Ok(false);
-                };
-                let parsed = match value.parse::<i64>() {
-                    Ok(parsed) if parsed >= 1 => parsed,
-                    _ => {
-                        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
-                            .await?;
-                        return Ok(false);
-                    }
-                };
-                if max_uses.is_some() {
-                    bot.send_message(
-                        chat_id,
-                        "Лимит использований можно указать только один раз.",
-                    )
-                    .await?;
-                    return Ok(false);
-                }
-                max_uses = Some(parsed);
-                index += 2;
-            }
-            value => {
-                if let Ok(parsed_number) = value.parse::<i64>() {
-                    positional_numbers.push(parsed_number);
-                    if positional_numbers.len() > 2 {
-                        bot.send_message(
-                            chat_id,
-                            "Укажите не больше двух чисел: срок в днях и лимит использований.",
-                        )
-                        .await?;
-                        return Ok(false);
-                    }
-                    index += 1;
-                    continue;
-                }
-                bot.send_message(chat_id, &format_hint).await?;
-                return Ok(false);
-            }
-        }
-    }
-
-    if let Some(parsed_days) = positional_numbers.first().copied() {
-        if days.is_some() {
-            bot.send_message(chat_id, "Срок действия можно указать только один раз.")
-                .await?;
-            return Ok(false);
-        }
-        days = Some(parsed_days);
-    }
-    if let Some(parsed_max_uses) = positional_numbers.get(1).copied() {
-        if max_uses.is_some() {
-            bot.send_message(
-                chat_id,
-                "Лимит использований можно указать только один раз.",
-            )
-            .await?;
-            return Ok(false);
-        }
-        max_uses = Some(parsed_max_uses);
-    }
-
-    let days = days.unwrap_or(security.default_token_days);
-    if days < 1 {
-        bot.send_message(chat_id, "Срок действия должен быть не меньше 1 дня.")
-            .await?;
-        return Ok(false);
-    }
-    if let Some(max_uses) = max_uses
-        && max_uses < 1
-    {
-        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
-            .await?;
-        return Ok(false);
-    }
-    if days > security.max_token_days {
-        bot.send_message(
-            chat_id,
-            format!(
-                "Нельзя создать токен на срок больше {} дней.",
-                security.max_token_days
-            ),
-        )
-        .await?;
-        return Ok(false);
-    }
-
-    let token = state
-        .db
-        .create_invite_token(days, auto_approve, max_uses, created_by)
-        .await?;
-
-    let link_line = state
-        .bot_username
-        .as_deref()
-        .map(|bot_username| {
-            let invite_link = build_bot_start_link(bot_username, &token.token);
-            format!("Ссылка: {}\n", invite_link)
-        })
-        .unwrap_or_else(|| {
-            "Ссылка: недоступна (у бота не задан username в Telegram).\n".to_string()
-        });
-
-    let response = format!(
-        "✅ Токен создан:\n\
-         Код: <code>{}</code>\n\
-         {}\
-         Режим: {}\n\
-         Действует до: {}\n\
-         Лимит использований: {}\n\
-         Для отзыва откройте `/token` -> список токенов -> карточку токена или используйте команду <code>/token revoke {}</code>.",
-        token.token,
-        link_line,
-        format_mode(token.auto_approve),
-        format_date(token.expires_at),
-        token
-            .max_usage
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "без лимита".to_string()),
-        token.token
-    );
-    bot.send_message(chat_id, response)
-        .parse_mode(ParseMode::Html)
-        .await?;
-    Ok(true)
 }

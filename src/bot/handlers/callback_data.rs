@@ -39,29 +39,31 @@ pub enum CallbackAction {
     PromptInviteToken,
     CancelWizard,
     ShowPendingRequests,
-    OpenPendingRequest { request_id: i64 },
+    ShowPendingRequestsPage { page: i64 },
+    OpenPendingRequest { request_id: i64, page: i64 },
     ShowUsersPage { page: i64 },
+    PromptUserLookup { page: i64 },
     OpenUserCard { tg_user_id: i64, page: i64 },
     ViewUserQr { tg_user_id: i64 },
     ConfirmUserBan { tg_user_id: i64, page: i64 },
     ExecuteUserBan { tg_user_id: i64, page: i64 },
     ShowStats,
     ShowServicePanel,
-    RunServiceAction { action: ServiceAction },
+    ConfirmServiceAction { action: ServiceAction },
+    ExecuteServiceAction { action: ServiceAction },
     ShowTokenMenu,
     PromptTokenCreate { auto_approve: bool },
     ShowTokenList,
     ShowTokenListPage { page: i64 },
+    PromptTokenLookup { page: i64 },
     OpenTokenCard { token_id: i64, page: i64 },
     ConfirmTokenRevoke { token_id: i64, page: i64 },
     ExecuteTokenRevoke { token_id: i64, page: i64 },
-    PromptTokenRevoke,
     PromptCreateUser,
     PromptDeleteUser,
-    ConfirmDeleteUser { tg_user_id: i64 },
     ExecuteDeleteUser { tg_user_id: i64 },
-    ApproveRequest { request_id: i64 },
-    RejectRequest { request_id: i64 },
+    ApproveRequest { request_id: i64, page: i64 },
+    RejectRequest { request_id: i64, page: i64 },
 }
 
 impl CallbackAction {
@@ -74,10 +76,12 @@ impl CallbackAction {
             Self::PromptInviteToken => "v1|user|invite".to_string(),
             Self::CancelWizard => "v1|wizard|cancel".to_string(),
             Self::ShowPendingRequests => "v1|admin|pending".to_string(),
-            Self::OpenPendingRequest { request_id } => {
-                format!("v1|admin|pending|open|{request_id}")
+            Self::ShowPendingRequestsPage { page } => format!("v1|admin|pending|page|{page}"),
+            Self::OpenPendingRequest { request_id, page } => {
+                format!("v1|admin|pending|open|{request_id}|{page}")
             }
             Self::ShowUsersPage { page } => format!("v1|admin|users|page|{page}"),
+            Self::PromptUserLookup { page } => format!("v1|admin|users|lookup|{page}"),
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
             }
@@ -90,8 +94,11 @@ impl CallbackAction {
             }
             Self::ShowStats => "v1|admin|stats".to_string(),
             Self::ShowServicePanel => "v1|admin|service".to_string(),
-            Self::RunServiceAction { action } => {
-                format!("v1|admin|service|run|{}", action.as_str())
+            Self::ConfirmServiceAction { action } => {
+                format!("v1|admin|service|confirm|{}", action.as_str())
+            }
+            Self::ExecuteServiceAction { action } => {
+                format!("v1|admin|service|execute|{}", action.as_str())
             }
             Self::ShowTokenMenu => "v1|admin|token".to_string(),
             Self::PromptTokenCreate { auto_approve } => {
@@ -100,6 +107,7 @@ impl CallbackAction {
             }
             Self::ShowTokenList => "v1|admin|token|list".to_string(),
             Self::ShowTokenListPage { page } => format!("v1|admin|token|page|{page}"),
+            Self::PromptTokenLookup { page } => format!("v1|admin|token|lookup|{page}"),
             Self::OpenTokenCard { token_id, page } => {
                 format!("v1|admin|token|open|{token_id}|{page}")
             }
@@ -109,22 +117,22 @@ impl CallbackAction {
             Self::ExecuteTokenRevoke { token_id, page } => {
                 format!("v1|admin|token|revoke|execute|{token_id}|{page}")
             }
-            Self::PromptTokenRevoke => "v1|admin|token|revoke".to_string(),
             Self::PromptCreateUser => "v1|admin|create".to_string(),
             Self::PromptDeleteUser => "v1|admin|delete".to_string(),
-            Self::ConfirmDeleteUser { tg_user_id } => {
-                format!("v1|admin|delete|confirm|{tg_user_id}")
-            }
             Self::ExecuteDeleteUser { tg_user_id } => {
                 format!("v1|admin|delete|execute|{tg_user_id}")
             }
-            Self::ApproveRequest { request_id } => format!("v1|req|approve|{request_id}"),
-            Self::RejectRequest { request_id } => format!("v1|req|reject|{request_id}"),
+            Self::ApproveRequest { request_id, page } => {
+                format!("v1|req|approve|{request_id}|{page}")
+            }
+            Self::RejectRequest { request_id, page } => {
+                format!("v1|req|reject|{request_id}|{page}")
+            }
         }
     }
 
     pub fn decode(data: &str) -> Option<Self> {
-        Self::decode_v1(data).or_else(|| Self::decode_legacy(data))
+        Self::decode_v1(data)
     }
 
     fn decode_v1(data: &str) -> Option<Self> {
@@ -137,10 +145,19 @@ impl CallbackAction {
             ["v1", "user", "invite"] => Some(Self::PromptInviteToken),
             ["v1", "wizard", "cancel"] => Some(Self::CancelWizard),
             ["v1", "admin", "pending"] => Some(Self::ShowPendingRequests),
-            ["v1", "admin", "pending", "open", request_id] => Some(Self::OpenPendingRequest {
-                request_id: parse_i64(request_id)?,
+            ["v1", "admin", "pending", "page", page] => Some(Self::ShowPendingRequestsPage {
+                page: parse_i64(page)?.max(1),
             }),
+            ["v1", "admin", "pending", "open", request_id, page] => {
+                Some(Self::OpenPendingRequest {
+                    request_id: parse_i64(request_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "users", "page", page] => Some(Self::ShowUsersPage {
+                page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "users", "lookup", page] => Some(Self::PromptUserLookup {
                 page: parse_i64(page)?.max(1),
             }),
             ["v1", "admin", "user", "open", tg_user_id, page] => Some(Self::OpenUserCard {
@@ -164,7 +181,10 @@ impl CallbackAction {
             }
             ["v1", "admin", "stats"] => Some(Self::ShowStats),
             ["v1", "admin", "service"] => Some(Self::ShowServicePanel),
-            ["v1", "admin", "service", "run", action] => Some(Self::RunServiceAction {
+            ["v1", "admin", "service", "confirm", action] => Some(Self::ConfirmServiceAction {
+                action: ServiceAction::parse(action)?,
+            }),
+            ["v1", "admin", "service", "execute", action] => Some(Self::ExecuteServiceAction {
                 action: ServiceAction::parse(action)?,
             }),
             ["v1", "admin", "token"] => Some(Self::ShowTokenMenu),
@@ -173,6 +193,9 @@ impl CallbackAction {
             }),
             ["v1", "admin", "token", "list"] => Some(Self::ShowTokenList),
             ["v1", "admin", "token", "page", page] => Some(Self::ShowTokenListPage {
+                page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "token", "lookup", page] => Some(Self::PromptTokenLookup {
                 page: parse_i64(page)?.max(1),
             }),
             ["v1", "admin", "token", "open", token_id, page] => Some(Self::OpenTokenCard {
@@ -191,70 +214,21 @@ impl CallbackAction {
                     page: parse_i64(page)?.max(1),
                 })
             }
-            ["v1", "admin", "token", "revoke"] => Some(Self::PromptTokenRevoke),
             ["v1", "admin", "create"] => Some(Self::PromptCreateUser),
             ["v1", "admin", "delete"] => Some(Self::PromptDeleteUser),
-            ["v1", "admin", "delete", "confirm", tg_user_id] => Some(Self::ConfirmDeleteUser {
-                tg_user_id: parse_i64(tg_user_id)?,
-            }),
             ["v1", "admin", "delete", "execute", tg_user_id] => Some(Self::ExecuteDeleteUser {
                 tg_user_id: parse_i64(tg_user_id)?,
             }),
-            ["v1", "req", "approve", request_id] => Some(Self::ApproveRequest {
+            ["v1", "req", "approve", request_id, page] => Some(Self::ApproveRequest {
                 request_id: parse_i64(request_id)?,
+                page: parse_i64(page)?.max(1),
             }),
-            ["v1", "req", "reject", request_id] => Some(Self::RejectRequest {
+            ["v1", "req", "reject", request_id, page] => Some(Self::RejectRequest {
                 request_id: parse_i64(request_id)?,
+                page: parse_i64(page)?.max(1),
             }),
             _ => None,
         }
-    }
-
-    fn decode_legacy(data: &str) -> Option<Self> {
-        if let Some(value) = data.strip_prefix("approve:") {
-            return Some(Self::ApproveRequest {
-                request_id: parse_i64(value)?,
-            });
-        }
-        if let Some(value) = data.strip_prefix("reject:") {
-            return Some(Self::RejectRequest {
-                request_id: parse_i64(value)?,
-            });
-        }
-        if let Some(value) = data.strip_prefix("users_page:") {
-            return Some(Self::ShowUsersPage {
-                page: parse_i64(value)?.max(1),
-            });
-        }
-        if let Some(value) = data.strip_prefix("user_open:") {
-            let (tg_user_id, page) = parse_pair(value)?;
-            return Some(Self::OpenUserCard {
-                tg_user_id,
-                page: page.max(1),
-            });
-        }
-        if let Some(value) = data.strip_prefix("user_view:") {
-            let (tg_user_id, _) = parse_pair(value)?;
-            return Some(Self::ViewUserQr { tg_user_id });
-        }
-        if let Some(value) = data.strip_prefix("user_ban:") {
-            let (tg_user_id, page) = parse_pair(value)?;
-            return Some(Self::ExecuteUserBan {
-                tg_user_id,
-                page: page.max(1),
-            });
-        }
-        if let Some(value) = data.strip_prefix("delete_user:") {
-            return Some(Self::ExecuteDeleteUser {
-                tg_user_id: parse_i64(value)?,
-            });
-        }
-        if let Some(value) = data.strip_prefix("service:") {
-            return Some(Self::RunServiceAction {
-                action: ServiceAction::parse(value).unwrap_or(ServiceAction::Status),
-            });
-        }
-        None
     }
 }
 
@@ -262,9 +236,3 @@ fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
 }
 
-fn parse_pair(value: &str) -> Option<(i64, i64)> {
-    let mut parts = value.split(':');
-    let left = parse_i64(parts.next()?)?;
-    let right = parse_i64(parts.next()?)?;
-    Some((left, right))
-}

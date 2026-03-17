@@ -111,6 +111,12 @@ pub struct AdminStats {
     pub deleted: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct AdminActivity {
+    pub timestamp: i64,
+    pub summary: String,
+}
+
 pub struct Db {
     pool: SqlitePool,
     wizard_state_ttl_seconds: Option<i64>,
@@ -562,27 +568,6 @@ impl Db {
         created.ok_or_else(|| anyhow::anyhow!("Не удалось сгенерировать уникальный токен"))
     }
 
-    pub async fn list_active_invite_tokens(
-        &self,
-        limit: i64,
-    ) -> Result<Vec<InviteToken>, anyhow::Error> {
-        let now = current_unix_timestamp()?;
-        let rows = sqlx::query_as::<_, InviteToken>(
-            "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active
-             FROM invite_tokens
-             WHERE is_active = 1
-               AND expires_at > ?
-               AND (max_usage IS NULL OR usage_count < max_usage)
-             ORDER BY expires_at ASC
-             LIMIT ?",
-        )
-        .bind(now)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows)
-    }
-
     pub async fn count_active_invite_tokens(&self) -> Result<i64, anyhow::Error> {
         let now = current_unix_timestamp()?;
         let count = sqlx::query_scalar::<_, i64>(
@@ -641,16 +626,25 @@ impl Db {
         Ok(token)
     }
 
-    pub async fn revoke_invite_token(&self, token: &str) -> Result<bool, anyhow::Error> {
+    pub async fn get_active_invite_token_by_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<InviteToken>, anyhow::Error> {
         let now = current_unix_timestamp()?;
-        let result = sqlx::query(
-            "UPDATE invite_tokens SET is_active = 0, revoked_at = ? WHERE token = ? AND is_active = 1",
+        let token = sqlx::query_as::<_, InviteToken>(
+            "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active
+             FROM invite_tokens
+             WHERE token = ?
+               AND is_active = 1
+               AND expires_at > ?
+               AND (max_usage IS NULL OR usage_count < max_usage)
+             LIMIT 1",
         )
-        .bind(now)
         .bind(token)
-        .execute(&self.pool)
+        .bind(now)
+        .fetch_optional(&self.pool)
         .await?;
-        Ok(result.rows_affected() > 0)
+        Ok(token)
     }
 
     pub async fn revoke_invite_token_by_id(&self, token_id: i64) -> Result<bool, anyhow::Error> {
@@ -759,19 +753,31 @@ impl Db {
         Ok(user_id)
     }
 
-    pub async fn list_pending_requests(
+    pub async fn count_pending_requests(&self) -> Result<i64, anyhow::Error> {
+        let total = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM registration_requests WHERE status = ?",
+        )
+        .bind(STATUS_PENDING)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(total)
+    }
+
+    pub async fn list_pending_requests_page(
         &self,
         limit: i64,
+        offset: i64,
     ) -> Result<Vec<RegistrationRequest>, anyhow::Error> {
         let rows = sqlx::query_as::<_, RegistrationRequest>(
             "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at
              FROM registration_requests
              WHERE status = ?
-             ORDER BY created_at ASC
-             LIMIT ?",
+             ORDER BY created_at DESC, id DESC
+             LIMIT ? OFFSET ?",
         )
         .bind(STATUS_PENDING)
         .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
@@ -844,6 +850,50 @@ impl Db {
             rejected: row.3,
             deleted: row.4,
         })
+    }
+
+    pub async fn list_recent_admin_activities(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<AdminActivity>, anyhow::Error> {
+        let rows = sqlx::query_as::<_, (i64, String)>(
+            "SELECT timestamp, summary FROM (
+                SELECT resolved_at AS timestamp,
+                       CASE status
+                           WHEN 'approved' THEN 'Заявка #' || id || ' одобрена'
+                           WHEN 'rejected' THEN 'Заявка #' || id || ' отклонена'
+                           ELSE NULL
+                       END AS summary
+                FROM registration_requests
+                WHERE resolved_at IS NOT NULL
+                  AND status IN ('approved', 'rejected')
+
+                UNION ALL
+
+                SELECT created_at AS timestamp,
+                       'Токен ' || token || ' создан'
+                FROM invite_tokens
+
+                UNION ALL
+
+                SELECT revoked_at AS timestamp,
+                       'Токен ' || token || ' отозван'
+                FROM invite_tokens
+                WHERE revoked_at IS NOT NULL
+            )
+            WHERE timestamp IS NOT NULL
+              AND summary IS NOT NULL
+            ORDER BY timestamp DESC
+            LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(timestamp, summary)| AdminActivity { timestamp, summary })
+            .collect())
     }
 
     pub async fn get_wizard_state(&self, tg_user_id: i64) -> Result<Option<String>, anyhow::Error> {

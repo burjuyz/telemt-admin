@@ -2,6 +2,8 @@
 
 #[path = "handlers/callback_data.rs"]
 pub mod callback_data;
+#[path = "handlers/actions/mod.rs"]
+mod actions;
 #[path = "handlers/callbacks/mod.rs"]
 mod callbacks;
 #[path = "handlers/commands/mod.rs"]
@@ -23,8 +25,12 @@ use teloxide::dispatching::DpHandlerDescription;
 use teloxide::dptree;
 use teloxide::prelude::*;
 
-pub fn telegram_commands() -> Vec<teloxide::types::BotCommand> {
-    commands::telegram_commands()
+pub fn public_telegram_commands() -> Vec<teloxide::types::BotCommand> {
+    commands::public_telegram_commands()
+}
+
+pub fn admin_telegram_commands() -> Vec<teloxide::types::BotCommand> {
+    commands::admin_telegram_commands()
 }
 
 pub fn schema() -> dptree::Handler<

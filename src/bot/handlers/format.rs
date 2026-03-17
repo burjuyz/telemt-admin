@@ -37,27 +37,6 @@ pub fn user_display_name(user: &RegistrationRequest) -> String {
         .unwrap_or_else(|| format!("tg_{}", user.tg_user_id))
 }
 
-pub fn render_invite_token_line(token: &InviteToken) -> String {
-    let mode = if token.auto_approve { "AUTO" } else { "MANUAL" };
-    let usage = token
-        .max_usage
-        .map(|max| format!("{}/{}", token.usage_count, max))
-        .unwrap_or_else(|| format!("{}/∞", token.usage_count));
-    let created_by = token
-        .created_by
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "—".to_string());
-    format!(
-        "• {} | {} | до {} | usage {} | creator {} | создан {}",
-        token.token,
-        mode,
-        format_date(token.expires_at),
-        usage,
-        created_by,
-        format_date(token.created_at)
-    )
-}
-
 pub fn render_invite_token_button_title(token: &InviteToken) -> String {
     let mode = if token.auto_approve { "AUTO" } else { "MANUAL" };
     format!(
@@ -78,18 +57,20 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
         .created_by
         .map(|value| value.to_string())
         .unwrap_or_else(|| "—".to_string());
+    let expires_at = format_date(token.expires_at);
+    let expires_label = format!("до {}", expires_at);
 
     format!(
         "🎟 Invite-токен\n\n\
          🔑 {}\n\
          ⚙️ {}\n\
-         ⏳ до {}\n\
-         📊 usage {}\n\
-         👤 creator {}\n\
+         ⏳ {}\n\
+         📊 {}\n\
+         👤 {}\n\
          📅 создан {}",
         token.token,
         mode,
-        format_date(token.expires_at),
+        expires_label,
         usage,
         created_by,
         format_date(token.created_at),
@@ -108,8 +89,8 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
         "👤 {}\n\n\
          🆔 {}\n\
          📱 {}\n\
-         📋 {}\n\
-         🔗 {}\n\
+         📋 статус: {}\n\
+         🔗 telemt: {}\n\
          📅 {}",
         user_display_name(user),
         user.tg_user_id,

@@ -10,8 +10,25 @@ pub struct ServiceController {
 #[derive(Debug)]
 pub struct ServiceResult {
     pub success: bool,
-    pub stdout: String,
     pub stderr: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceSummary {
+    pub success: bool,
+    pub active_state: String,
+    pub sub_state: String,
+    pub unit_file_state: String,
+    pub main_pid: Option<i64>,
+    pub exec_main_status: Option<i64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceEvents {
+    pub success: bool,
+    pub lines: Vec<String>,
+    pub error: Option<String>,
 }
 
 impl ServiceController {
@@ -19,6 +36,10 @@ impl ServiceController {
         Self {
             service_name: service_name.into(),
         }
+    }
+
+    pub fn service_name(&self) -> &str {
+        &self.service_name
     }
 
     /// После изменения конфига telemt: `systemctl kill -s HUP --kill-who=main`,
@@ -44,9 +65,8 @@ impl ServiceController {
                     );
                     ServiceResult {
                         success: true,
-                        stdout: "Конфиг перечитан (systemctl kill -s HUP --kill-who=main)"
+                        stderr: "Конфиг перечитан (systemctl kill -s HUP --kill-who=main)"
                             .to_string(),
-                        stderr: String::from_utf8_lossy(&o.stderr).trim().to_string(),
                     }
                 }
                 Ok(o) => {
@@ -91,7 +111,6 @@ impl ServiceController {
             Ok(o) => {
                 let result = ServiceResult {
                     success: o.status.success(),
-                    stdout: String::from_utf8_lossy(&o.stdout).trim().to_string(),
                     stderr: String::from_utf8_lossy(&o.stderr).trim().to_string(),
                 };
                 if result.success {
@@ -112,7 +131,6 @@ impl ServiceController {
             }
             Err(e) => ServiceResult {
                 success: false,
-                stdout: String::new(),
                 stderr: {
                     tracing::error!(
                         action = action,
@@ -146,16 +164,137 @@ impl ServiceController {
         self.run_systemctl("status")
     }
 
-    pub fn format_result(&self, action: &str, r: &ServiceResult) -> String {
-        let status = if r.success { "OK" } else { "Ошибка" };
-        let mut out = format!("{} telemt: {}\n", action, status);
-        if !r.stdout.is_empty() {
-            out.push_str(&r.stdout);
-            out.push('\n');
+    pub fn summary(&self) -> ServiceSummary {
+        #[cfg(unix)]
+        {
+            let output = Command::new("systemctl")
+                .arg("show")
+                .arg(&self.service_name)
+                .args([
+                    "--property=ActiveState",
+                    "--property=SubState",
+                    "--property=UnitFileState",
+                    "--property=MainPID",
+                    "--property=ExecMainStatus",
+                ])
+                .output();
+
+            match output {
+                Ok(o) if o.status.success() => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    let mut active_state = String::from("unknown");
+                    let mut sub_state = String::from("unknown");
+                    let mut unit_file_state = String::from("unknown");
+                    let mut main_pid = None;
+                    let mut exec_main_status = None;
+
+                    for line in stdout.lines() {
+                        if let Some(value) = line.strip_prefix("ActiveState=") {
+                            active_state = value.trim().to_string();
+                        } else if let Some(value) = line.strip_prefix("SubState=") {
+                            sub_state = value.trim().to_string();
+                        } else if let Some(value) = line.strip_prefix("UnitFileState=") {
+                            unit_file_state = value.trim().to_string();
+                        } else if let Some(value) = line.strip_prefix("MainPID=") {
+                            main_pid = value.trim().parse::<i64>().ok().filter(|pid| *pid > 0);
+                        } else if let Some(value) = line.strip_prefix("ExecMainStatus=") {
+                            exec_main_status = value
+                                .trim()
+                                .parse::<i64>()
+                                .ok()
+                                .filter(|status| *status >= 0);
+                        }
+                    }
+
+                    ServiceSummary {
+                        success: true,
+                        active_state,
+                        sub_state,
+                        unit_file_state,
+                        main_pid,
+                        exec_main_status,
+                        error: None,
+                    }
+                }
+                Ok(o) => ServiceSummary {
+                    success: false,
+                    active_state: String::from("unknown"),
+                    sub_state: String::from("unknown"),
+                    unit_file_state: String::from("unknown"),
+                    main_pid: None,
+                    exec_main_status: None,
+                    error: Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                },
+                Err(e) => ServiceSummary {
+                    success: false,
+                    active_state: String::from("unknown"),
+                    sub_state: String::from("unknown"),
+                    unit_file_state: String::from("unknown"),
+                    main_pid: None,
+                    exec_main_status: None,
+                    error: Some(format!("Ошибка запуска systemctl show: {}", e)),
+                },
+            }
         }
-        if !r.stderr.is_empty() {
-            out.push_str(&r.stderr);
+
+        #[cfg(not(unix))]
+        {
+            ServiceSummary {
+                success: false,
+                active_state: String::from("unknown"),
+                sub_state: String::from("unknown"),
+                unit_file_state: String::from("unknown"),
+                main_pid: None,
+                exec_main_status: None,
+                error: Some(String::from("Подробный статус доступен только на Unix")),
+            }
         }
-        out.trim().to_string()
     }
+
+    pub fn recent_events(&self, limit: usize) -> ServiceEvents {
+        #[cfg(unix)]
+        {
+            let limit = limit.to_string();
+            let output = Command::new("journalctl")
+                .args(["-u", &self.service_name, "-n", &limit, "--no-pager"])
+                .output();
+
+            match output {
+                Ok(o) if o.status.success() => {
+                    let lines = String::from_utf8_lossy(&o.stdout)
+                        .lines()
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty())
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>();
+                    ServiceEvents {
+                        success: true,
+                        lines,
+                        error: None,
+                    }
+                }
+                Ok(o) => ServiceEvents {
+                    success: false,
+                    lines: Vec::new(),
+                    error: Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                },
+                Err(e) => ServiceEvents {
+                    success: false,
+                    lines: Vec::new(),
+                    error: Some(format!("Ошибка запуска journalctl: {}", e)),
+                },
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = limit;
+            ServiceEvents {
+                success: false,
+                lines: Vec::new(),
+                error: Some(String::from("journalctl доступен только на Unix")),
+            }
+        }
+    }
+
 }

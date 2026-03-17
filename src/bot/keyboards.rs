@@ -3,15 +3,54 @@
 use crate::bot::handlers::callback_data::{CallbackAction, ServiceAction};
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
+fn page_nav_row(
+    page: i64,
+    total_pages: i64,
+    previous: CallbackAction,
+    current: CallbackAction,
+    next: CallbackAction,
+) -> Vec<InlineKeyboardButton> {
+    vec![
+        InlineKeyboardButton::callback("⬅️", previous.encode()),
+        InlineKeyboardButton::callback(
+            format!("📄 {}/{}", page, total_pages.max(1)),
+            current.encode(),
+        ),
+        InlineKeyboardButton::callback("➡️", next.encode()),
+    ]
+}
+
+fn refresh_home_row(refresh: CallbackAction) -> Vec<InlineKeyboardButton> {
+    vec![
+        InlineKeyboardButton::callback("🔄 Обновить", refresh.encode()),
+        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
+    ]
+}
+
+fn refresh_lookup_row(refresh: CallbackAction, lookup: CallbackAction) -> Vec<InlineKeyboardButton> {
+    vec![
+        InlineKeyboardButton::callback("🔄 Обновить", refresh.encode()),
+        InlineKeyboardButton::callback("🔎 Найти", lookup.encode()),
+    ]
+}
+
 pub fn approve_reject_buttons(request_id: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::default().append_row(vec![
         InlineKeyboardButton::callback(
             "✅ Одобрить",
-            CallbackAction::ApproveRequest { request_id }.encode(),
+            CallbackAction::ApproveRequest {
+                request_id,
+                page: 1,
+            }
+            .encode(),
         ),
         InlineKeyboardButton::callback(
             "❌ Отклонить",
-            CallbackAction::RejectRequest { request_id }.encode(),
+            CallbackAction::RejectRequest {
+                request_id,
+                page: 1,
+            }
+            .encode(),
         ),
     ])
 }
@@ -63,10 +102,6 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
             InlineKeyboardButton::callback("⚙️ Сервис", CallbackAction::ShowServicePanel.encode()),
         ],
         vec![
-            InlineKeyboardButton::callback("➕ Создать", CallbackAction::PromptCreateUser.encode()),
-            InlineKeyboardButton::callback("⛔ Удалить", CallbackAction::PromptDeleteUser.encode()),
-        ],
-        vec![
             InlineKeyboardButton::callback("📊 Статистика", CallbackAction::ShowStats.encode()),
             InlineKeyboardButton::callback(
                 "↩️ Главный экран",
@@ -76,7 +111,11 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
     ])
 }
 
-pub fn pending_requests_keyboard(requests: &[(i64, String)]) -> InlineKeyboardMarkup {
+pub fn pending_requests_keyboard(
+    requests: &[(i64, String)],
+    page: i64,
+    total_pages: i64,
+) -> InlineKeyboardMarkup {
     let mut rows: Vec<Vec<InlineKeyboardButton>> = requests
         .iter()
         .map(|(request_id, title)| {
@@ -84,44 +123,58 @@ pub fn pending_requests_keyboard(requests: &[(i64, String)]) -> InlineKeyboardMa
                 title.clone(),
                 CallbackAction::OpenPendingRequest {
                     request_id: *request_id,
+                    page,
                 }
                 .encode(),
             )]
         })
         .collect();
 
-    rows.push(vec![
-        InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowPendingRequests.encode()),
-        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
-    ]);
+    let prev_page = if page > 1 { page - 1 } else { 1 };
+    let next_page = if page < total_pages {
+        page + 1
+    } else {
+        total_pages
+    };
+
+    rows.push(page_nav_row(
+        page,
+        total_pages,
+        CallbackAction::ShowPendingRequestsPage { page: prev_page },
+        CallbackAction::ShowPendingRequestsPage { page },
+        CallbackAction::ShowPendingRequestsPage { page: next_page },
+    ));
+    rows.push(refresh_home_row(CallbackAction::ShowPendingRequestsPage {
+        page,
+    }));
 
     InlineKeyboardMarkup::new(rows)
 }
 
-pub fn pending_request_card_keyboard(request_id: i64) -> InlineKeyboardMarkup {
+pub fn pending_request_card_keyboard(request_id: i64, page: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
             InlineKeyboardButton::callback(
                 "✅ Одобрить",
-                CallbackAction::ApproveRequest { request_id }.encode(),
+                CallbackAction::ApproveRequest { request_id, page }.encode(),
             ),
             InlineKeyboardButton::callback(
                 "❌ Отклонить",
-                CallbackAction::RejectRequest { request_id }.encode(),
+                CallbackAction::RejectRequest { request_id, page }.encode(),
             ),
         ],
         vec![InlineKeyboardButton::callback(
             "⬅️ Назад к заявкам",
-            CallbackAction::ShowPendingRequests.encode(),
+            CallbackAction::ShowPendingRequestsPage { page }.encode(),
         )],
     ])
 }
 
-pub fn pending_result_keyboard() -> InlineKeyboardMarkup {
+pub fn pending_result_keyboard(page: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![InlineKeyboardButton::callback(
             "⬅️ К заявкам",
-            CallbackAction::ShowPendingRequests.encode(),
+            CallbackAction::ShowPendingRequestsPage { page }.encode(),
         )],
         vec![InlineKeyboardButton::callback(
             "🏠 Главная",
@@ -154,27 +207,25 @@ pub fn users_page_keyboard(
         total_pages
     };
 
+    rows.push(page_nav_row(
+        page,
+        total_pages,
+        CallbackAction::ShowUsersPage { page: prev_page },
+        CallbackAction::ShowUsersPage { page },
+        CallbackAction::ShowUsersPage { page: next_page },
+    ));
+    rows.push(refresh_lookup_row(
+        CallbackAction::ShowUsersPage { page },
+        CallbackAction::PromptUserLookup { page },
+    ));
     rows.push(vec![
-        InlineKeyboardButton::callback(
-            "⬅️",
-            CallbackAction::ShowUsersPage { page: prev_page }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            format!("📄 {}/{}", page, total_pages.max(1)),
-            CallbackAction::ShowUsersPage { page }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            "➡️",
-            CallbackAction::ShowUsersPage { page: next_page }.encode(),
-        ),
+        InlineKeyboardButton::callback("➕ Создать", CallbackAction::PromptCreateUser.encode()),
+        InlineKeyboardButton::callback("⛔ Удалить", CallbackAction::PromptDeleteUser.encode()),
     ]);
-    rows.push(vec![
-        InlineKeyboardButton::callback(
-            "🔄 Обновить",
-            CallbackAction::ShowUsersPage { page }.encode(),
-        ),
-        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
-    ]);
+    rows.push(vec![InlineKeyboardButton::callback(
+        "🏠 Главная",
+        CallbackAction::ShowAdminHome.encode(),
+    )]);
 
     InlineKeyboardMarkup::new(rows)
 }
@@ -199,31 +250,12 @@ pub fn service_control_buttons() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
             InlineKeyboardButton::callback(
-                "▶️ Запустить",
-                CallbackAction::RunServiceAction {
-                    action: ServiceAction::Start,
-                }
-                .encode(),
-            ),
-            InlineKeyboardButton::callback(
-                "⏹ Остановить",
-                CallbackAction::RunServiceAction {
-                    action: ServiceAction::Stop,
-                }
-                .encode(),
-            ),
-        ],
-        vec![
-            InlineKeyboardButton::callback(
-                "🔄 Перезапустить",
-                CallbackAction::RunServiceAction {
-                    action: ServiceAction::Restart,
-                }
-                .encode(),
+                "🔄 Обновить",
+                CallbackAction::ShowServicePanel.encode(),
             ),
             InlineKeyboardButton::callback(
                 "📖 Reload",
-                CallbackAction::RunServiceAction {
+                CallbackAction::ExecuteServiceAction {
                     action: ServiceAction::Reload,
                 }
                 .encode(),
@@ -231,9 +263,25 @@ pub fn service_control_buttons() -> InlineKeyboardMarkup {
         ],
         vec![
             InlineKeyboardButton::callback(
-                "🔄 Обновить",
-                CallbackAction::RunServiceAction {
-                    action: ServiceAction::Status,
+                "🔄 Перезапустить",
+                CallbackAction::ConfirmServiceAction {
+                    action: ServiceAction::Restart,
+                }
+                .encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏹ Остановить",
+                CallbackAction::ConfirmServiceAction {
+                    action: ServiceAction::Stop,
+                }
+                .encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "▶️ Запустить",
+                CallbackAction::ExecuteServiceAction {
+                    action: ServiceAction::Start,
                 }
                 .encode(),
             ),
@@ -258,10 +306,13 @@ pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
     ];
 
     if auto_approve_enabled {
-        rows.insert(1, vec![InlineKeyboardButton::callback(
+        rows.insert(
+            1,
+            vec![InlineKeyboardButton::callback(
                 "🚀 Создать авто-токен",
                 CallbackAction::PromptTokenCreate { auto_approve: true }.encode(),
-            )]);
+            )],
+        );
     }
 
     rows.push(vec![InlineKeyboardButton::callback(
@@ -295,31 +346,21 @@ pub fn token_list_keyboard(
         total_pages
     };
 
+    rows.push(page_nav_row(
+        page,
+        total_pages,
+        CallbackAction::ShowTokenListPage { page: prev_page },
+        CallbackAction::ShowTokenListPage { page },
+        CallbackAction::ShowTokenListPage { page: next_page },
+    ));
+    rows.push(refresh_lookup_row(
+        CallbackAction::ShowTokenListPage { page },
+        CallbackAction::PromptTokenLookup { page },
+    ));
     rows.push(vec![
-        InlineKeyboardButton::callback(
-            "⬅️",
-            CallbackAction::ShowTokenListPage { page: prev_page }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            format!("📄 {}/{}", page, total_pages.max(1)),
-            CallbackAction::ShowTokenListPage { page }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            "➡️",
-            CallbackAction::ShowTokenListPage { page: next_page }.encode(),
-        ),
-    ]);
-    rows.push(vec![
-        InlineKeyboardButton::callback(
-            "🔄 Обновить",
-            CallbackAction::ShowTokenListPage { page }.encode(),
-        ),
         InlineKeyboardButton::callback("⬅️ Назад", CallbackAction::ShowTokenMenu.encode()),
+        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
     ]);
-    rows.push(vec![InlineKeyboardButton::callback(
-        "🏠 Главная",
-        CallbackAction::ShowAdminHome.encode(),
-    )]);
 
     InlineKeyboardMarkup::new(rows)
 }
@@ -347,6 +388,16 @@ pub fn confirm_token_revoke_keyboard(token_id: i64, page: i64) -> InlineKeyboard
             "⬅️ Назад",
             CallbackAction::OpenTokenCard { token_id, page }.encode(),
         ),
+    ]])
+}
+
+pub fn confirm_service_action_keyboard(action: ServiceAction) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "✅ Подтвердить",
+            CallbackAction::ExecuteServiceAction { action }.encode(),
+        ),
+        InlineKeyboardButton::callback("⬅️ Назад", CallbackAction::ShowServicePanel.encode()),
     ]])
 }
 
