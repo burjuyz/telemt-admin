@@ -238,4 +238,3 @@ impl CallbackAction {
 fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
 }
-

@@ -27,7 +27,10 @@ fn refresh_home_row(refresh: CallbackAction) -> Vec<InlineKeyboardButton> {
     ]
 }
 
-fn refresh_lookup_row(refresh: CallbackAction, lookup: CallbackAction) -> Vec<InlineKeyboardButton> {
+fn refresh_lookup_row(
+    refresh: CallbackAction,
+    lookup: CallbackAction,
+) -> Vec<InlineKeyboardButton> {
     vec![
         InlineKeyboardButton::callback("🔄 Обновить", refresh.encode()),
         InlineKeyboardButton::callback("🔎 Найти", lookup.encode()),
