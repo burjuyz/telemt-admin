@@ -39,3 +39,11 @@
 - критичные переходы состояний регистрации и consume invite-токена должны оставаться атомарными и не затирать конкурентные изменения;
 - wizard-state хранится в SQLite, переживает рестарт процесса и может иметь TTL через `security.wizard_state_ttl_seconds`;
 - если администратор запрашивает `/link` без существующей учётной записи, доступ создаётся автоматически.
+
+Документация решений:
+
+- индекс ADR: `docs/adr/README.md`;
+- архитектурные решения по backend-слою: `docs/adr/001-telemt-api-backend.md`;
+- решения по безопасности и rollout: `docs/adr/002-telemt-api-security-and-rollout.md`;
+- операционный runbook: `docs/runbook.md`.
+- backlog дальнейшей реализации: `docs/backlog.md`.

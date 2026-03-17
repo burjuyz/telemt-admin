@@ -20,6 +20,13 @@
 - `src/bot/handlers/menu.rs` — текстовый ввод для активного wizard-state.
 - `src/bot/keyboards.rs` — inline-клавиатуры.
 
+Связанные документы:
+
+- `docs/adr/README.md` — индекс ADR и точка входа в принятые решения.
+- `docs/adr/001-telemt-api-backend.md` — почему выбран `API-first + fallback`.
+- `docs/adr/002-telemt-api-security-and-rollout.md` — security-границы и стратегия rollout.
+- `docs/runbook.md` — практическая эксплуатация и проверка rollout.
+
 Принципы:
 
 - Telegram/UI-логика не должна утекать в `db`, `service`, `telemt_cfg` и HTTP-клиент `telemt`.

@@ -23,6 +23,7 @@
 - [Проверка после запуска](#проверка-после-запуска)
 - [Обновление](#обновление)
 - [Сборка из исходников](#сборка-из-исходников)
+- [Архитектурные решения и runbook](#архитектурные-решения-и-runbook)
 - [Troubleshooting](#troubleshooting)
 - [CI/CD](#cicd)
 
@@ -302,6 +303,16 @@ sudo systemctl enable --now telemt-admin.service
 - `/service` — открыть панель управления сервисом.
 - `/help` — показать справку.
 - `/link` — получить свою proxy-ссылку; для администратора при отсутствии учётной записи доступ будет создан автоматически.
+
+## Архитектурные решения и runbook
+
+Для API-first интеграции с `telemt` дополнительно зафиксированы:
+
+- `docs/adr/README.md` — индекс архитектурных решений;
+- `docs/adr/001-telemt-api-backend.md` — выбор backend-модели `API-first + fallback`;
+- `docs/adr/002-telemt-api-security-and-rollout.md` — security-правила и стратегия rollout;
+- `docs/runbook.md` — пошаговое включение, проверка и откат integration path;
+- `docs/backlog.md` — список следующих задач, включая observability и поддержку `/metrics`.
 
 ## Конфигурация (telemt-admin.toml)
 
