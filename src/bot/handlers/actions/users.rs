@@ -4,17 +4,31 @@ use crate::bot::handlers::shared::{parse_create_target, CreateTarget};
 use crate::bot::handlers::state::{telemt_username, BotState};
 use teloxide::prelude::{Bot, ChatId, Requester};
 
+enum UserLookupTarget {
+    UserId(i64),
+    Username(String),
+}
+
+fn resolve_user_lookup_target(arg: &str) -> Option<UserLookupTarget> {
+    let target = parse_create_target(arg)?;
+
+    match target {
+        CreateTarget::UserId(id) => Some(UserLookupTarget::UserId(id)),
+        CreateTarget::Username(username) => Some(UserLookupTarget::Username(username)),
+    }
+}
+
 pub async fn create_user_from_input(
     bot: &Bot,
     chat_id: ChatId,
     state: &BotState,
     arg: &str,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    let tg_user_id: i64 = match parse_create_target(arg) {
-        Some(CreateTarget::UserId(id)) => id,
-        Some(CreateTarget::Username(username)) => {
+    let tg_user_id: i64 = match resolve_user_lookup_target(arg) {
+        Some(UserLookupTarget::UserId(id)) => id,
+        Some(UserLookupTarget::Username(username)) => {
             match state.db.find_tg_user_id_by_username(&username).await? {
-                Some(user_id) => user_id,
+                Some(id) => id,
                 None => {
                     bot.send_message(
                         chat_id,
@@ -87,11 +101,11 @@ pub async fn open_user_from_lookup_input(
     arg: &str,
     page: i64,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    let tg_user_id = match parse_create_target(arg) {
-        Some(CreateTarget::UserId(id)) => id,
-        Some(CreateTarget::Username(username)) => {
+    let tg_user_id = match resolve_user_lookup_target(arg) {
+        Some(UserLookupTarget::UserId(id)) => id,
+        Some(UserLookupTarget::Username(username)) => {
             match state.db.find_tg_user_id_by_username(&username).await? {
-                Some(user_id) => user_id,
+                Some(id) => id,
                 None => {
                     bot.send_message(chat_id, format!("Пользователь @{} не найден в базе.", username))
                         .await?;

@@ -8,8 +8,8 @@ use crate::link::{build_proxy_link, generate_user_secret};
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Message, Requester};
 
-fn reload_telemt_after_config_change(state: &BotState) {
-    let reload = state.service.notify_config_reloaded();
+async fn reload_telemt_after_config_change(state: &BotState) {
+    let reload = state.service.notify_config_reloaded().await;
     if !reload.success {
         tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
     }
@@ -111,7 +111,7 @@ pub async fn approve_request_and_build_link(
     let user_secret = generate_user_secret();
 
     state.telemt_cfg.upsert_user(&telemt_user, &user_secret)?;
-    reload_telemt_after_config_change(state);
+    reload_telemt_after_config_change(state).await;
     if state
         .db
         .approve(request_id, &telemt_user, &user_secret)
@@ -135,7 +135,7 @@ pub async fn approve_user_direct_and_build_link(
     let telemt_user = telemt_username(tg_user_id);
     let secret = generate_user_secret();
     state.telemt_cfg.upsert_user(&telemt_user, &secret)?;
-    reload_telemt_after_config_change(state);
+    reload_telemt_after_config_change(state).await;
     state
         .db
         .set_approved(
@@ -185,6 +185,7 @@ pub async fn process_invite_token(
                 .await?;
             return Ok(());
         }
+        Err(TokenConsumeError::Internal(error)) => return Err(error.into()),
     };
 
     tracing::info!(
@@ -308,7 +309,7 @@ pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<Strin
     let telemt_user = telemt_username(tg_user_id);
     let removed_from_cfg = state.telemt_cfg.remove_user(&telemt_user)?;
     if removed_from_cfg {
-        reload_telemt_after_config_change(state);
+        reload_telemt_after_config_change(state).await;
     }
     let removed_from_db = state.db.deactivate_user(tg_user_id).await?;
 

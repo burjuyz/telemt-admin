@@ -5,8 +5,9 @@ use super::format::{
 };
 use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
-use crate::db::RequestStatus;
+use crate::db::{AdminActivity, AdminActivityKind, RequestStatus};
 use crate::link::build_proxy_link;
+use std::future::Future;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardMarkup, InputFile, KeyboardRemove, MessageId};
 
@@ -26,6 +27,56 @@ async fn upsert_screen(
             .reply_markup(reply_markup)
             .await?;
     }
+    Ok(())
+}
+
+struct PagedSelectorConfig {
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    total_items: i64,
+    page_size: i64,
+    requested_page: i64,
+    empty_text: String,
+    empty_keyboard: InlineKeyboardMarkup,
+}
+
+async fn render_paged_selector_screen<T, LoadFn, LoadFut, MapFn, TextFn, KeyboardFn>(
+    bot: &Bot,
+    config: PagedSelectorConfig,
+    load_items: LoadFn,
+    map_item: MapFn,
+    text_builder: TextFn,
+    keyboard_builder: KeyboardFn,
+) -> HandlerResult
+where
+    LoadFn: FnOnce(i64, i64) -> LoadFut,
+    LoadFut: Future<Output = Result<Vec<T>, anyhow::Error>>,
+    MapFn: Fn(&T) -> (i64, String),
+    TextFn: Fn(i64, i64, i64) -> String,
+    KeyboardFn: Fn(&[(i64, String)], i64, i64) -> InlineKeyboardMarkup,
+{
+    if config.total_items <= 0 {
+        upsert_screen(
+            bot,
+            config.chat_id,
+            config.message_id,
+            config.empty_text,
+            config.empty_keyboard,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let (page, total_pages, offset) = page_bounds(
+        config.total_items,
+        config.page_size,
+        config.requested_page,
+    );
+    let rows = load_items(config.page_size, offset).await?;
+    let items: Vec<(i64, String)> = rows.iter().map(map_item).collect();
+    let text = text_builder(config.total_items, page, total_pages);
+    let keyboard = keyboard_builder(&items, page, total_pages);
+    upsert_screen(bot, config.chat_id, config.message_id, text, keyboard).await?;
     Ok(())
 }
 
@@ -61,22 +112,39 @@ fn service_action_title(action: ServiceAction) -> &'static str {
     }
 }
 
+fn service_status_label(active_state: &str, sub_state: &str) -> String {
+    match (active_state, sub_state) {
+        ("active", "running") => "работает".to_string(),
+        ("active", value) => value.to_string(),
+        ("inactive", value) => value.to_string(),
+        (value, _) => value.to_string(),
+    }
+}
+
+fn admin_activity_summary(activity: &AdminActivity) -> String {
+    match &activity.kind {
+        AdminActivityKind::RequestApproved { request_id } => {
+            format!("Заявка #{} одобрена", request_id)
+        }
+        AdminActivityKind::RequestRejected { request_id } => {
+            format!("Заявка #{} отклонена", request_id)
+        }
+        AdminActivityKind::TokenCreated { token } => format!("Токен {} создан", token),
+        AdminActivityKind::TokenRevoked { token } => format!("Токен {} отозван", token),
+    }
+}
+
 async fn render_service_panel_text(
     state: &BotState,
     notice: Option<&str>,
 ) -> Result<String, anyhow::Error> {
-    let summary = state.service.summary();
-    let service_events = state.service.recent_events(3);
+    let summary = state.service.summary().await;
+    let service_events = state.service.recent_events(3).await;
     let admin_events = state.db.list_recent_admin_activities(4).await?;
     let stats = state.db.admin_stats().await?;
     let active_tokens = state.db.count_active_invite_tokens().await?;
 
-    let status_label = match (summary.active_state.as_str(), summary.sub_state.as_str()) {
-        ("active", "running") => "работает",
-        ("active", value) => value,
-        ("inactive", value) => value,
-        (value, _) => value,
-    };
+    let status_label = service_status_label(&summary.active_state, &summary.sub_state);
 
     let mut lines = vec![format!(
         "⚙️ Сервис {}\nСтатус: {}",
@@ -144,7 +212,7 @@ async fn render_service_panel_text(
             lines.push(format!(
                 "• {} · {}",
                 format_timestamp(item.timestamp),
-                compact_line(&item.summary, 70)
+                compact_line(&admin_activity_summary(item), 70)
             ));
         }
     }
@@ -257,37 +325,30 @@ pub async fn admin_show_token_list_page(
 ) -> HandlerResult {
     let total_tokens = state.db.count_active_invite_tokens().await?;
     let tokens_page_size = state.config.users_page_size.max(1);
-    if total_tokens <= 0 {
-        upsert_screen(
-            bot,
+    render_paged_selector_screen(
+        bot,
+        PagedSelectorConfig {
             chat_id,
             message_id,
-            "🎟 Токены\n\nАктивных invite-токенов нет.".to_string(),
-            crate::bot::keyboards::token_menu_keyboard(
+            total_items: total_tokens,
+            page_size: tokens_page_size,
+            requested_page,
+            empty_text: "🎟 Токены\n\nАктивных invite-токенов нет.".to_string(),
+            empty_keyboard: crate::bot::keyboards::token_menu_keyboard(
                 state.config.security.allow_auto_approve_tokens,
             ),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let (page, total_pages, offset) = page_bounds(total_tokens, tokens_page_size, requested_page);
-    let tokens = state
-        .db
-        .list_active_invite_tokens_page(tokens_page_size, offset)
-        .await?;
-
-    let items: Vec<(i64, String)> = tokens
-        .iter()
-        .map(|token| (token.id, render_invite_token_button_title(token)))
-        .collect();
-    let text = format!(
-        "🎟 Токены · {}\nСтраница: {}/{}\n\nВыберите токен.",
-        total_tokens, page, total_pages
-    );
-    let keyboard = crate::bot::keyboards::token_list_keyboard(&items, page, total_pages);
-    upsert_screen(bot, chat_id, message_id, text, keyboard).await?;
-    Ok(())
+        },
+        |limit, offset| state.db.list_active_invite_tokens_page(limit, offset),
+        |token| (token.id, render_invite_token_button_title(token)),
+        |total, page, total_pages| {
+            format!(
+                "🎟 Токены · {}\nСтраница: {}/{}\n\nВыберите токен.",
+                total, page, total_pages
+            )
+        },
+        crate::bot::keyboards::token_list_keyboard,
+    )
+    .await
 }
 
 pub async fn show_token_card(
@@ -355,39 +416,28 @@ pub async fn admin_show_pending_requests_page(
 ) -> HandlerResult {
     let total_pending = state.db.count_pending_requests().await?;
     let requests_page_size = state.config.users_page_size.max(1);
-    if total_pending <= 0 {
-        upsert_screen(
-            bot,
+    render_paged_selector_screen(
+        bot,
+        PagedSelectorConfig {
             chat_id,
             message_id,
-            "📥 Заявки\n\nНовых заявок нет.".to_string(),
-            crate::bot::keyboards::admin_home_keyboard(),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let (page, total_pages, offset) = page_bounds(total_pending, requests_page_size, requested_page);
-    let pending = state
-        .db
-        .list_pending_requests_page(requests_page_size, offset)
-        .await?;
-    let items: Vec<(i64, String)> = pending
-        .iter()
-        .map(|req| {
-            (
-                req.id,
-                format!("📋 #{} · {}", req.id, user_display_name(req)),
+            total_items: total_pending,
+            page_size: requests_page_size,
+            requested_page,
+            empty_text: "📥 Заявки\n\nНовых заявок нет.".to_string(),
+            empty_keyboard: crate::bot::keyboards::admin_home_keyboard(),
+        },
+        |limit, offset| state.db.list_pending_requests_page(limit, offset),
+        |req| (req.id, format!("📋 #{} · {}", req.id, user_display_name(req))),
+        |total, page, total_pages| {
+            format!(
+                "📥 Заявки · {}\nСтраница: {}/{}\n\nВыберите заявку.",
+                total, page, total_pages
             )
-        })
-        .collect();
-    let text = format!(
-        "📥 Заявки · {}\nСтраница: {}/{}\n\nВыберите заявку.",
-        total_pending, page, total_pages
-    );
-    let keyboard = crate::bot::keyboards::pending_requests_keyboard(&items, page, total_pages);
-    upsert_screen(bot, chat_id, message_id, text, keyboard).await?;
-    Ok(())
+        },
+        crate::bot::keyboards::pending_requests_keyboard,
+    )
+    .await
 }
 
 pub async fn show_pending_request_card(
@@ -452,48 +502,38 @@ pub async fn admin_show_users_page(
 ) -> HandlerResult {
     let total_users = state.db.count_active_users().await?;
     let users_page_size = state.config.users_page_size.max(1);
-    if total_users <= 0 {
-        upsert_screen(
-            bot,
+    render_paged_selector_screen(
+        bot,
+        PagedSelectorConfig {
             chat_id,
             message_id,
-            "👥 Пользователи\n\nАктивных пользователей нет.\n\nМожно создать нового пользователя."
-                .to_string(),
-            crate::bot::keyboards::users_page_keyboard(&[], 1, 1),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let (page, total_pages, offset) = page_bounds(total_users, users_page_size, requested_page);
-    let users = state
-        .db
-        .list_active_users_page(users_page_size, offset)
-        .await?;
-
-    let titles: Vec<(i64, String)> = users
-        .iter()
-        .map(|user| {
+            total_items: total_users,
+            page_size: users_page_size,
+            requested_page,
+            empty_text:
+                "👥 Пользователи\n\nАктивных пользователей нет.\n\nМожно создать нового пользователя."
+                    .to_string(),
+            empty_keyboard: crate::bot::keyboards::users_page_keyboard(&[], 1, 1),
+        },
+        |limit, offset| state.db.list_active_users_page(limit, offset),
+        |user| {
             let display_name = user_display_name(user);
             let short = if display_name.chars().count() > 40 {
                 format!("{}...", display_name.chars().take(37).collect::<String>())
             } else {
                 display_name
             };
-            (
-                user.tg_user_id,
-                format!("{} (id {})", short, user.tg_user_id),
+            (user.tg_user_id, format!("{} (id {})", short, user.tg_user_id))
+        },
+        |total, page, total_pages| {
+            format!(
+                "👥 Пользователи · {}\nСтраница: {}/{}\n\nВыберите пользователя.",
+                total, page, total_pages
             )
-        })
-        .collect();
-
-    let text = format!(
-        "👥 Пользователи · {}\nСтраница: {}/{}\n\nВыберите пользователя.",
-        total_users, page, total_pages
-    );
-    let keyboard = crate::bot::keyboards::users_page_keyboard(&titles, page, total_pages);
-    upsert_screen(bot, chat_id, message_id, text, keyboard).await?;
-    Ok(())
+        },
+        crate::bot::keyboards::users_page_keyboard,
+    )
+    .await
 }
 
 pub async fn admin_show_stats(
@@ -503,15 +543,71 @@ pub async fn admin_show_stats(
     message_id: Option<MessageId>,
 ) -> HandlerResult {
     let stats = state.db.admin_stats().await?;
-    let text = format!(
-        "📊 Статистика\n\n\
-         Всего: {}\n\
-         Заявки: {}\n\
-         Активные: {}\n\
-         Отклонённые: {}\n\
-         Удалённые: {}",
-        stats.total, stats.pending, stats.approved, stats.rejected, stats.deleted
-    );
+    let summary = state.service.summary().await;
+    let admin_events = state.db.list_recent_admin_activities(4).await?;
+    let status_label = service_status_label(&summary.active_state, &summary.sub_state);
+
+    let mut lines = vec![
+        "📊 Сводка состояния".to_string(),
+        String::new(),
+        format!("Сервис: {}", state.service.service_name()),
+        format!("Статус: {}", status_label),
+        format!(
+            "Проверка systemd: {}",
+            if summary.success { "OK" } else { "Ошибка" }
+        ),
+        format!(
+            "Unit: {} | PID: {}",
+            summary.unit_file_state,
+            summary
+                .main_pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "—".to_string())
+        ),
+    ];
+
+    if let Some(exec_status) = summary.exec_main_status {
+        lines.push(format!("Код процесса: {}", exec_status));
+    }
+    if let Some(error) = &summary.error {
+        lines.push(format!("Ошибка статуса: {}", compact_line(error, 90)));
+    }
+
+    lines.push(String::new());
+    lines.push("Доступ и заявки:".to_string());
+    lines.push(format!("• Активные пользователи: {}", stats.approved));
+    lines.push(format!("• Заявки в ожидании: {}", stats.pending));
+    lines.push(format!("• Отклонённые заявки: {}", stats.rejected));
+    lines.push(format!("• Отозванные доступы: {}", stats.deleted));
+    lines.push(format!("• Всего записей: {}", stats.total));
+
+    lines.push(String::new());
+    lines.push("Invite-токены:".to_string());
+    lines.push(format!("• Активные: {}", stats.tokens_active));
+    lines.push(format!(
+        "• Активные ручные / авто: {} / {}",
+        stats.tokens_manual_active, stats.tokens_auto_active
+    ));
+    lines.push(format!("• Отозванные: {}", stats.tokens_revoked));
+    lines.push(format!("• Истёкшие: {}", stats.tokens_expired));
+    lines.push(format!("• Исчерпанные: {}", stats.tokens_exhausted));
+    lines.push(format!("• Всего создано: {}", stats.tokens_total));
+
+    lines.push(String::new());
+    lines.push("Недавняя активность:".to_string());
+    if admin_events.is_empty() {
+        lines.push("• пока нет событий".to_string());
+    } else {
+        for item in admin_events.iter().take(4) {
+            lines.push(format!(
+                "• {} · {}",
+                format_timestamp(item.timestamp),
+                compact_line(&admin_activity_summary(item), 70)
+            ));
+        }
+    }
+
+    let text = lines.join("\n");
     upsert_screen(
         bot,
         chat_id,

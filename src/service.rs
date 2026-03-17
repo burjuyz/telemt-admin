@@ -1,6 +1,8 @@
 //! Управление systemd-сервисом telemt.
 
-use std::process::Command;
+use std::process::Output;
+#[cfg(unix)]
+use tokio::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct ServiceController {
@@ -42,20 +44,33 @@ impl ServiceController {
         &self.service_name
     }
 
+    #[cfg(unix)]
+    async fn run_command(program: &str, args: Vec<String>) -> std::io::Result<Output> {
+        let mut command = Command::new(program);
+        command.args(args);
+        command.output().await
+    }
+
     /// После изменения конфига telemt: `systemctl kill -s HUP --kill-who=main`,
     /// при неудаче — restart.
-    pub fn notify_config_reloaded(&self) -> ServiceResult {
+    pub async fn notify_config_reloaded(&self) -> ServiceResult {
         #[cfg(unix)]
         {
             tracing::info!(
                 service = %self.service_name,
                 "Running systemctl kill -s HUP --kill-who=main"
             );
-            let output = Command::new("systemctl")
-                .arg("kill")
-                .args(["-s", "HUP", "--kill-who=main"])
-                .arg(&self.service_name)
-                .output();
+            let output = Self::run_command(
+                "systemctl",
+                vec![
+                    "kill".to_string(),
+                    "-s".to_string(),
+                    "HUP".to_string(),
+                    "--kill-who=main".to_string(),
+                    self.service_name.clone(),
+                ],
+            )
+            .await;
 
             match output {
                 Ok(o) if o.status.success() => {
@@ -76,7 +91,7 @@ impl ServiceController {
                         stderr = %stderr,
                         "systemctl kill failed, falling back to restart"
                     );
-                    self.restart()
+                    self.restart().await
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -84,7 +99,7 @@ impl ServiceController {
                         error = %e,
                         "systemctl kill execution failed, falling back to restart"
                     );
-                    self.restart()
+                    self.restart().await
                 }
             }
         }
@@ -92,20 +107,27 @@ impl ServiceController {
         #[cfg(not(unix))]
         {
             tracing::debug!(service = %self.service_name, "non-Unix: restarting service");
-            self.restart()
+            self.restart().await
         }
     }
 
-    fn run_systemctl(&self, action: &str) -> ServiceResult {
+    async fn run_systemctl(&self, action: &str) -> ServiceResult {
         tracing::info!(
             action = action,
             service = %self.service_name,
             "Running systemctl command"
         );
-        let output = Command::new("systemctl")
-            .arg(action)
-            .arg(&self.service_name)
-            .output();
+        #[cfg(unix)]
+        let output = Self::run_command(
+            "systemctl",
+            vec![action.to_string(), self.service_name.clone()],
+        )
+        .await;
+
+        #[cfg(not(unix))]
+        let output: Result<Output, std::io::Error> = Err(std::io::Error::other(
+            "systemctl доступен только на Unix",
+        ));
 
         match output {
             Ok(o) => {
@@ -144,40 +166,42 @@ impl ServiceController {
         }
     }
 
-    pub fn start(&self) -> ServiceResult {
-        self.run_systemctl("start")
+    pub async fn start(&self) -> ServiceResult {
+        self.run_systemctl("start").await
     }
 
-    pub fn stop(&self) -> ServiceResult {
-        self.run_systemctl("stop")
+    pub async fn stop(&self) -> ServiceResult {
+        self.run_systemctl("stop").await
     }
 
-    pub fn restart(&self) -> ServiceResult {
-        self.run_systemctl("restart")
+    pub async fn restart(&self) -> ServiceResult {
+        self.run_systemctl("restart").await
     }
 
-    pub fn reload(&self) -> ServiceResult {
-        self.notify_config_reloaded()
+    pub async fn reload(&self) -> ServiceResult {
+        self.notify_config_reloaded().await
     }
 
-    pub fn status(&self) -> ServiceResult {
-        self.run_systemctl("status")
+    pub async fn status(&self) -> ServiceResult {
+        self.run_systemctl("status").await
     }
 
-    pub fn summary(&self) -> ServiceSummary {
+    pub async fn summary(&self) -> ServiceSummary {
         #[cfg(unix)]
         {
-            let output = Command::new("systemctl")
-                .arg("show")
-                .arg(&self.service_name)
-                .args([
-                    "--property=ActiveState",
-                    "--property=SubState",
-                    "--property=UnitFileState",
-                    "--property=MainPID",
-                    "--property=ExecMainStatus",
-                ])
-                .output();
+            let output = Self::run_command(
+                "systemctl",
+                vec![
+                    "show".to_string(),
+                    self.service_name.clone(),
+                    "--property=ActiveState".to_string(),
+                    "--property=SubState".to_string(),
+                    "--property=UnitFileState".to_string(),
+                    "--property=MainPID".to_string(),
+                    "--property=ExecMainStatus".to_string(),
+                ],
+            )
+            .await;
 
             match output {
                 Ok(o) if o.status.success() => {
@@ -251,13 +275,20 @@ impl ServiceController {
         }
     }
 
-    pub fn recent_events(&self, limit: usize) -> ServiceEvents {
+    pub async fn recent_events(&self, limit: usize) -> ServiceEvents {
         #[cfg(unix)]
         {
-            let limit = limit.to_string();
-            let output = Command::new("journalctl")
-                .args(["-u", &self.service_name, "-n", &limit, "--no-pager"])
-                .output();
+            let output = Self::run_command(
+                "journalctl",
+                vec![
+                    "-u".to_string(),
+                    self.service_name.clone(),
+                    "-n".to_string(),
+                    limit.to_string(),
+                    "--no-pager".to_string(),
+                ],
+            )
+            .await;
 
             match output {
                 Ok(o) if o.status.success() => {
