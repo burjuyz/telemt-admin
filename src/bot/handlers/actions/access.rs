@@ -61,6 +61,13 @@ async fn notify_auto_approve(
 }
 
 async fn notify_admins(bot: &Bot, state: &BotState, req: &RegistrationRequest) -> HandlerResult {
+    if !state.config.notifications.notify_on_new_request {
+        tracing::debug!(
+            request_id = req.id,
+            "Уведомления о новых заявках отключены конфигом"
+        );
+        return Ok(());
+    }
     let text = format!(
         "📋 Новая заявка #{}:\n\
          User ID: {}\n\

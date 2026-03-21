@@ -1,6 +1,6 @@
 //! Inline-клавиатуры для экранов и wizard-сценариев.
 
-use crate::bot::handlers::callback_data::{CallbackAction, ServiceAction};
+use crate::bot::handlers::callback_data::{CallbackAction, ServiceAction, UserLimitField};
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
 fn page_nav_row(
@@ -286,10 +286,60 @@ pub fn users_page_keyboard(
 
 pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::default()
+        .append_row(vec![
+            InlineKeyboardButton::callback(
+                "🔄 Обновить",
+                CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🪄 Deep link",
+                CallbackAction::SendUserStartLink { tg_user_id }.encode(),
+            ),
+        ])
         .append_row(vec![InlineKeyboardButton::callback(
             "🔗 Данные + QR",
             CallbackAction::ViewUserQr { tg_user_id }.encode(),
         )])
+        .append_row(vec![
+            InlineKeyboardButton::callback(
+                "TCP лимит",
+                CallbackAction::PromptUserLimit {
+                    tg_user_id,
+                    page,
+                    field: UserLimitField::MaxTcpConns,
+                }
+                .encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "IP лимит",
+                CallbackAction::PromptUserLimit {
+                    tg_user_id,
+                    page,
+                    field: UserLimitField::MaxUniqueIps,
+                }
+                .encode(),
+            ),
+        ])
+        .append_row(vec![
+            InlineKeyboardButton::callback(
+                "Квота",
+                CallbackAction::PromptUserLimit {
+                    tg_user_id,
+                    page,
+                    field: UserLimitField::DataQuotaBytes,
+                }
+                .encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "Истекает",
+                CallbackAction::PromptUserLimit {
+                    tg_user_id,
+                    page,
+                    field: UserLimitField::Expiration,
+                }
+                .encode(),
+            ),
+        ])
         .append_row(vec![InlineKeyboardButton::callback(
             "⛔ Удалить пользователя",
             CallbackAction::ConfirmUserBan { tg_user_id, page }.encode(),
@@ -315,6 +365,10 @@ pub fn service_control_buttons() -> InlineKeyboardMarkup {
                 .encode(),
             ),
         ],
+        vec![InlineKeyboardButton::callback(
+            "📈 Top пользователей",
+            CallbackAction::ShowConnectionsSummary.encode(),
+        )],
         vec![
             InlineKeyboardButton::callback(
                 "🔄 Перезапустить",
@@ -430,6 +484,16 @@ pub fn token_list_keyboard(
 
 pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "🔄 Обновить",
+                CallbackAction::OpenTokenCard { token_id, page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🪄 Deep link",
+                CallbackAction::SendTokenStartLink { token_id }.encode(),
+            ),
+        ],
         vec![InlineKeyboardButton::callback(
             "🗑 Отозвать токен",
             CallbackAction::ConfirmTokenRevoke { token_id, page }.encode(),
@@ -467,8 +531,32 @@ pub fn confirm_service_action_keyboard(action: ServiceAction) -> InlineKeyboardM
 pub fn stats_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![vec![
         InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowStats.encode()),
+        InlineKeyboardButton::callback(
+            "📈 Top users",
+            CallbackAction::ShowConnectionsSummary.encode(),
+        ),
+    ], vec![
         InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
     ]])
+}
+
+pub fn connections_summary_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "🔄 Обновить",
+                CallbackAction::ShowConnectionsSummary.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⚙️ Сервис",
+                CallbackAction::ShowServicePanel.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "🏠 Главная",
+            CallbackAction::ShowAdminHome.encode(),
+        )],
+    ])
 }
 
 pub fn cancel_keyboard(back_action: CallbackAction) -> InlineKeyboardMarkup {

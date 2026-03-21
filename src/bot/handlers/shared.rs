@@ -8,7 +8,26 @@ use teloxide::types::{MessageId, ParseMode};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-pub fn parse_start_token(text: &str) -> Option<String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdminStartScreen {
+    Home,
+    Users,
+    Tokens,
+    Service,
+    Stats,
+    Pending,
+    Connections,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StartPayload {
+    InviteToken(String),
+    AdminUser(i64),
+    AdminToken(i64),
+    AdminScreen(AdminStartScreen),
+}
+
+pub fn parse_start_payload(text: &str) -> Option<StartPayload> {
     let mut parts = text.split_whitespace();
     let command = parts.next()?;
     if !command.starts_with("/start") {
@@ -25,10 +44,40 @@ pub fn parse_start_token(text: &str) -> Option<String> {
     };
     let normalized = decoded.trim().trim_matches('`').trim();
     if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized.to_string())
+        return None;
     }
+
+    if let Some(token) = normalized.strip_prefix("invite:") {
+        return Some(StartPayload::InviteToken(token.trim().to_string()));
+    }
+
+    if let Some(payload) = normalized.strip_prefix("admin:") {
+        let mut parts = payload.split(':');
+        match (parts.next(), parts.next()) {
+            (Some("user"), Some(value)) => {
+                return value.parse::<i64>().ok().map(StartPayload::AdminUser);
+            }
+            (Some("token"), Some(value)) => {
+                return value.parse::<i64>().ok().map(StartPayload::AdminToken);
+            }
+            (Some("screen"), Some(value)) => {
+                let screen = match value {
+                    "home" => AdminStartScreen::Home,
+                    "users" => AdminStartScreen::Users,
+                    "tokens" => AdminStartScreen::Tokens,
+                    "service" => AdminStartScreen::Service,
+                    "stats" => AdminStartScreen::Stats,
+                    "pending" => AdminStartScreen::Pending,
+                    "connections" => AdminStartScreen::Connections,
+                    _ => return None,
+                };
+                return Some(StartPayload::AdminScreen(screen));
+            }
+            _ => {}
+        }
+    }
+
+    Some(StartPayload::InviteToken(normalized.to_string()))
 }
 
 pub fn callback_message_target(q: &CallbackQuery) -> Option<(ChatId, MessageId)> {
@@ -75,7 +124,11 @@ pub async fn send_admin_backend_error(
 
 pub fn build_bot_start_link(bot_username: &str, token: &str) -> String {
     let normalized = bot_username.trim_start_matches('@');
-    format!("https://t.me/{}?start={}", normalized, token)
+    format!(
+        "https://t.me/{}?start={}",
+        normalized,
+        urlencoding::encode(token)
+    )
 }
 
 pub fn build_user_qr_png_bytes(payload: &str) -> Result<Vec<u8>, anyhow::Error> {

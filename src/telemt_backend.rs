@@ -43,6 +43,80 @@ pub struct TelemtRuntimeEvent {
 }
 
 #[derive(Debug, Clone)]
+pub struct TelemtUserInfo {
+    pub source: TelemtBackendMode,
+    pub user_ad_tag: Option<String>,
+    pub max_tcp_conns: Option<usize>,
+    pub expiration_rfc3339: Option<String>,
+    pub data_quota_bytes: Option<u64>,
+    pub max_unique_ips: Option<usize>,
+    pub current_connections: Option<u64>,
+    pub active_unique_ips: Option<usize>,
+    pub active_unique_ips_list: Vec<String>,
+    pub recent_unique_ips: Option<usize>,
+    pub recent_unique_ips_list: Vec<String>,
+    pub total_octets: Option<u64>,
+    pub links: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TelemtUserPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tcp_conns: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_rfc3339: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_quota_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_unique_ips: Option<usize>,
+}
+
+impl TelemtUserPatch {
+    pub fn is_empty(&self) -> bool {
+        self.max_tcp_conns.is_none()
+            && self.expiration_rfc3339.is_none()
+            && self.data_quota_bytes.is_none()
+            && self.max_unique_ips.is_none()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtStatsSummary {
+    pub uptime_seconds: f64,
+    pub connections_total: u64,
+    pub connections_bad_total: u64,
+    pub handshake_timeouts_total: u64,
+    pub configured_users: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtConnectionTopUser {
+    pub username: String,
+    pub current_connections: u64,
+    pub total_octets: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtConnectionsSummary {
+    pub current_connections: u64,
+    pub current_connections_me: u64,
+    pub current_connections_direct: u64,
+    pub active_users: usize,
+    pub top_by_connections: Vec<TelemtConnectionTopUser>,
+    pub top_by_throughput: Vec<TelemtConnectionTopUser>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtMonitorSnapshot {
+    pub health_status: String,
+    pub accepting_new_connections: Option<bool>,
+    pub me_runtime_ready: Option<bool>,
+    pub upstream_unhealthy_total: Option<u64>,
+    pub me_selftest_kdf_state: Option<String>,
+    pub me_selftest_timeskew_state: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TelemtRuntimeSnapshot {
     pub source: TelemtBackendMode,
     pub health_status: String,
@@ -197,6 +271,54 @@ impl TelemtBackend {
         }
     }
 
+    pub async fn get_user_info(
+        &self,
+        username: &str,
+        cached_secret: Option<&str>,
+    ) -> Result<Option<TelemtUserInfo>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(legacy) => legacy.get_user_info(cached_secret).await,
+            TelemtBackendInner::Api(api) => api.get_user_info(username, cached_secret).await,
+        }
+    }
+
+    pub async fn patch_user(
+        &self,
+        username: &str,
+        patch: &TelemtUserPatch,
+    ) -> Result<TelemtUserInfo, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Err(anyhow!(
+                "Изменение лимитов пользователя доступно только через telemt control API"
+            )),
+            TelemtBackendInner::Api(api) => api.patch_user(username, patch).await,
+        }
+    }
+
+    pub async fn stats_summary(&self) -> Result<Option<TelemtStatsSummary>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(None),
+            TelemtBackendInner::Api(api) => api.stats_summary().await.map(Some),
+        }
+    }
+
+    pub async fn connections_summary(
+        &self,
+        limit: usize,
+    ) -> Result<Option<TelemtConnectionsSummary>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(None),
+            TelemtBackendInner::Api(api) => api.connections_summary(limit).await,
+        }
+    }
+
+    pub async fn monitor_snapshot(&self) -> Result<Option<TelemtMonitorSnapshot>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(None),
+            TelemtBackendInner::Api(api) => api.monitor_snapshot().await.map(Some),
+        }
+    }
+
     pub async fn runtime_snapshot(
         &self,
         recent_events_limit: usize,
@@ -250,6 +372,28 @@ impl LegacyTelemtBackend {
             cached_secret.ok_or_else(|| anyhow!("Не найден локальный секрет пользователя"))?;
         let params = self.telemt_cfg.read_link_params()?;
         build_proxy_link(&params, secret).map_err(anyhow::Error::from)
+    }
+
+    async fn get_user_info(
+        &self,
+        cached_secret: Option<&str>,
+    ) -> Result<Option<TelemtUserInfo>, anyhow::Error> {
+        let link = self.build_user_link(cached_secret).await?;
+        Ok(Some(TelemtUserInfo {
+            source: TelemtBackendMode::LegacyFile,
+            user_ad_tag: None,
+            max_tcp_conns: None,
+            expiration_rfc3339: None,
+            data_quota_bytes: None,
+            max_unique_ips: None,
+            current_connections: None,
+            active_unique_ips: None,
+            active_unique_ips_list: Vec::new(),
+            recent_unique_ips: None,
+            recent_unique_ips_list: Vec::new(),
+            total_octets: None,
+            links: vec![link],
+        }))
     }
 }
 
@@ -359,6 +503,145 @@ impl ApiTelemtBackend {
         self.fetch_user_link(username)
             .await?
             .ok_or_else(|| anyhow!("Не удалось получить ссылку пользователя из telemt API"))
+    }
+
+    async fn get_user_info(
+        &self,
+        username: &str,
+        cached_secret: Option<&str>,
+    ) -> Result<Option<TelemtUserInfo>, anyhow::Error> {
+        let path = format!("/v1/users/{username}");
+        match self.get_success::<ApiUserInfo>(&path).await {
+            Ok(response) => Ok(Some(map_api_user_info(
+                TelemtBackendMode::ControlApi,
+                response.data,
+            ))),
+            Err(error) => {
+                if let Some(api_error) = error.downcast_ref::<TelemtApiError>()
+                    && api_error.status == StatusCode::NOT_FOUND
+                {
+                    return Ok(None);
+                }
+                if let Some(legacy) = &self.legacy_fallback {
+                    tracing::warn!(
+                        username = username,
+                        error = %error,
+                        "telemt API user lookup failed; falling back to legacy link data"
+                    );
+                    return legacy.get_user_info(cached_secret).await;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    async fn patch_user(
+        &self,
+        username: &str,
+        patch: &TelemtUserPatch,
+    ) -> Result<TelemtUserInfo, anyhow::Error> {
+        if patch.is_empty() {
+            return Err(anyhow!("Не задано ни одно изменение лимитов"));
+        }
+        let path = format!("/v1/users/{username}");
+        let response = self
+            .mutate_with_retry::<TelemtUserPatch, ApiUserInfo>(Method::PATCH, &path, Some(patch))
+            .await?;
+        Ok(map_api_user_info(
+            TelemtBackendMode::ControlApi,
+            response.data,
+        ))
+    }
+
+    async fn stats_summary(&self) -> Result<TelemtStatsSummary, anyhow::Error> {
+        let response = self.get_success::<StatsSummaryData>("/v1/stats/summary").await?;
+        Ok(TelemtStatsSummary {
+            uptime_seconds: response.data.uptime_seconds,
+            connections_total: response.data.connections_total,
+            connections_bad_total: response.data.connections_bad_total,
+            handshake_timeouts_total: response.data.handshake_timeouts_total,
+            configured_users: response.data.configured_users,
+        })
+    }
+
+    async fn connections_summary(
+        &self,
+        limit: usize,
+    ) -> Result<Option<TelemtConnectionsSummary>, anyhow::Error> {
+        let path = format!(
+            "/v1/runtime/connections/summary?limit={}",
+            limit.clamp(1, 50)
+        );
+        let response = self
+            .get_success::<RuntimeConnectionsSummaryTop>(&path)
+            .await?;
+        let Some(data) = response.data.data else {
+            return Ok(None);
+        };
+        Ok(Some(TelemtConnectionsSummary {
+            current_connections: data.totals.current_connections,
+            current_connections_me: data.totals.current_connections_me,
+            current_connections_direct: data.totals.current_connections_direct,
+            active_users: data.totals.active_users,
+            top_by_connections: data
+                .top
+                .by_connections
+                .into_iter()
+                .map(map_connection_top_user)
+                .collect(),
+            top_by_throughput: data
+                .top
+                .by_throughput
+                .into_iter()
+                .map(map_connection_top_user)
+                .collect(),
+        }))
+    }
+
+    async fn monitor_snapshot(&self) -> Result<TelemtMonitorSnapshot, anyhow::Error> {
+        let health = self.get_success::<HealthData>("/v1/health").await?;
+        let gates = match self.get_success::<RuntimeGatesData>("/v1/runtime/gates").await {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/gates недоступен");
+                None
+            }
+        };
+        let me_selftest = match self
+            .get_success::<MeSelftestTop>("/v1/runtime/me-selftest")
+            .await
+        {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/me-selftest недоступен");
+                None
+            }
+        };
+        let upstream = match self
+            .get_success::<UpstreamQualityTop>("/v1/runtime/upstream_quality")
+            .await
+        {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/upstream_quality недоступен");
+                None
+            }
+        };
+
+        Ok(TelemtMonitorSnapshot {
+            health_status: health.data.status,
+            accepting_new_connections: gates.as_ref().map(|g| g.accepting_new_connections),
+            me_runtime_ready: gates.as_ref().map(|g| g.me_runtime_ready),
+            upstream_unhealthy_total: upstream
+                .as_ref()
+                .and_then(|u| u.summary.as_ref().map(|s| s.unhealthy_total)),
+            me_selftest_kdf_state: me_selftest
+                .as_ref()
+                .and_then(|m| m.data.as_ref().map(|p| p.kdf.state.clone())),
+            me_selftest_timeskew_state: me_selftest
+                .as_ref()
+                .and_then(|m| m.data.as_ref().map(|p| p.timeskew.state.clone())),
+        })
     }
 
     async fn runtime_snapshot(
@@ -667,6 +950,42 @@ fn pick_best_link(links: &UserLinks) -> Option<String> {
         .or_else(|| links.classic.first().cloned())
 }
 
+fn collect_links(links: &UserLinks) -> Vec<String> {
+    links
+        .tls
+        .iter()
+        .chain(links.secure.iter())
+        .chain(links.classic.iter())
+        .cloned()
+        .collect()
+}
+
+fn map_api_user_info(source: TelemtBackendMode, user: ApiUserInfo) -> TelemtUserInfo {
+    TelemtUserInfo {
+        source,
+        user_ad_tag: user.user_ad_tag,
+        max_tcp_conns: user.max_tcp_conns,
+        expiration_rfc3339: user.expiration_rfc3339,
+        data_quota_bytes: user.data_quota_bytes,
+        max_unique_ips: user.max_unique_ips,
+        current_connections: Some(user.current_connections),
+        active_unique_ips: Some(user.active_unique_ips),
+        active_unique_ips_list: user.active_unique_ips_list,
+        recent_unique_ips: Some(user.recent_unique_ips),
+        recent_unique_ips_list: user.recent_unique_ips_list,
+        total_octets: Some(user.total_octets),
+        links: collect_links(&user.links),
+    }
+}
+
+fn map_connection_top_user(user: RuntimeConnectionUserData) -> TelemtConnectionTopUser {
+    TelemtConnectionTopUser {
+        username: user.username,
+        current_connections: user.current_connections,
+        total_octets: user.total_octets,
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("telemt API error ({status}): {message}")]
 pub struct TelemtApiError {
@@ -711,6 +1030,29 @@ struct UserInfo {
 }
 
 #[derive(Debug, Deserialize)]
+struct ApiUserInfo {
+    #[serde(default)]
+    user_ad_tag: Option<String>,
+    #[serde(default)]
+    max_tcp_conns: Option<usize>,
+    #[serde(default)]
+    expiration_rfc3339: Option<String>,
+    #[serde(default)]
+    data_quota_bytes: Option<u64>,
+    #[serde(default)]
+    max_unique_ips: Option<usize>,
+    current_connections: u64,
+    active_unique_ips: usize,
+    #[serde(default)]
+    active_unique_ips_list: Vec<String>,
+    recent_unique_ips: usize,
+    #[serde(default)]
+    recent_unique_ips_list: Vec<String>,
+    total_octets: u64,
+    links: UserLinks,
+}
+
+#[derive(Debug, Deserialize)]
 struct UserLinks {
     #[serde(default)]
     classic: Vec<String>,
@@ -724,6 +1066,15 @@ struct UserLinks {
 struct HealthData {
     status: String,
     read_only: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatsSummaryData {
+    uptime_seconds: f64,
+    connections_total: u64,
+    connections_bad_total: u64,
+    handshake_timeouts_total: u64,
+    configured_users: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -808,4 +1159,41 @@ struct UpstreamQualitySummaryDe {
     configured_total: u64,
     healthy_total: u64,
     unhealthy_total: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeConnectionsSummaryTop {
+    #[allow(dead_code)]
+    enabled: bool,
+    #[serde(default)]
+    data: Option<RuntimeConnectionsSummaryPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeConnectionsSummaryPayload {
+    totals: RuntimeConnectionsTotals,
+    top: RuntimeConnectionsTop,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeConnectionsTotals {
+    current_connections: u64,
+    current_connections_me: u64,
+    current_connections_direct: u64,
+    active_users: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeConnectionsTop {
+    #[serde(default)]
+    by_connections: Vec<RuntimeConnectionUserData>,
+    #[serde(default)]
+    by_throughput: Vec<RuntimeConnectionUserData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeConnectionUserData {
+    username: String,
+    current_connections: u64,
+    total_octets: u64,
 }

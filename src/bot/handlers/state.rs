@@ -1,3 +1,4 @@
+use crate::bot::handlers::callback_data::UserLimitField;
 use crate::config::Config;
 use crate::db::Db;
 use crate::service::ServiceController;
@@ -11,6 +12,11 @@ pub enum WizardState {
     AdminCreateAwaitingTarget,
     AdminDeleteAwaitingTarget,
     AdminFindUserAwaitingTarget { page: i64 },
+    AdminSetUserLimitAwaitingValue {
+        tg_user_id: i64,
+        page: i64,
+        field: UserLimitField,
+    },
     AdminFindTokenAwaitingCode { page: i64 },
     AdminTokenCreateAwaitingParams { auto_approve: bool },
 }
@@ -24,6 +30,16 @@ impl WizardState {
             Self::AdminFindUserAwaitingTarget { page } => {
                 format!("admin_find_user:{}", (*page).max(1))
             }
+            Self::AdminSetUserLimitAwaitingValue {
+                tg_user_id,
+                page,
+                field,
+            } => format!(
+                "admin_set_user_limit:{}:{}:{}",
+                field.as_str(),
+                tg_user_id,
+                (*page).max(1)
+            ),
             Self::AdminFindTokenAwaitingCode { page } => {
                 format!("admin_find_token:{}", (*page).max(1))
             }
@@ -51,6 +67,17 @@ impl WizardState {
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {
                         page: value.parse::<i64>().ok()?.max(1),
+                    });
+                }
+                if let Some(value) = value.strip_prefix("admin_set_user_limit:") {
+                    let mut parts = value.split(':');
+                    let field = UserLimitField::parse(parts.next()?)?;
+                    let tg_user_id = parts.next()?.parse::<i64>().ok()?;
+                    let page = parts.next()?.parse::<i64>().ok()?.max(1);
+                    return Some(Self::AdminSetUserLimitAwaitingValue {
+                        tg_user_id,
+                        page,
+                        field,
                     });
                 }
                 if let Some(value) = value.strip_prefix("admin_find_token:") {

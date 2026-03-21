@@ -1,7 +1,7 @@
 use super::callback_data::ServiceAction;
 use super::format::{
-    format_timestamp, render_invite_token_button_title, render_invite_token_card_text,
-    render_user_card_text, usage_guide_text, user_display_name,
+    format_bytes_human, format_timestamp, render_invite_token_button_title,
+    render_invite_token_card_text, render_user_card_text, usage_guide_text, user_display_name,
 };
 use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
@@ -139,6 +139,20 @@ async fn render_service_panel_text(
     let admin_events = state.db.list_recent_admin_activities(4).await?;
     let stats = state.db.admin_stats().await?;
     let active_tokens = state.db.count_active_invite_tokens().await?;
+    let telemt_stats = match state.telemt_backend.stats_summary().await {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(error = %error, "Не удалось получить stats summary telemt");
+            None
+        }
+    };
+    let connections_summary = match state.telemt_backend.connections_summary(5).await {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(error = %error, "Не удалось получить connections summary telemt");
+            None
+        }
+    };
 
     let status_label = service_status_label(&summary.active_state, &summary.sub_state);
     let admin_version = env!("CARGO_PKG_VERSION");
@@ -300,6 +314,30 @@ async fn render_service_panel_text(
                 ));
             }
         }
+    }
+
+    if let Some(summary) = telemt_stats {
+        lines.push(String::new());
+        lines.push("Нагрузка".to_string());
+        lines.push(format!(
+            "Uptime: {:.0} сек | users in config: {}",
+            summary.uptime_seconds, summary.configured_users
+        ));
+        lines.push(format!(
+            "Всего соединений: {} | bad: {} | handshake timeout: {}",
+            summary.connections_total,
+            summary.connections_bad_total,
+            summary.handshake_timeouts_total
+        ));
+    }
+    if let Some(connections) = connections_summary {
+        lines.push(format!(
+            "Live: {} | ME: {} | Direct: {} | active users: {}",
+            connections.current_connections,
+            connections.current_connections_me,
+            connections.current_connections_direct,
+            connections.active_users
+        ));
     }
 
     lines.push(String::new());
@@ -835,13 +873,96 @@ pub async fn show_user_card(
     message_id: Option<MessageId>,
     user: &crate::db::RegistrationRequest,
     page: i64,
+    state: &BotState,
 ) -> HandlerResult {
+    let runtime_info = if let Some(telemt_username) = user.telemt_username.as_deref() {
+        match state
+            .telemt_backend
+            .get_user_info(telemt_username, user.secret.as_deref())
+            .await
+        {
+            Ok(info) => info,
+            Err(error) => {
+                tracing::warn!(
+                    tg_user_id = user.tg_user_id,
+                    error = %error,
+                    "Не удалось получить runtime-данные пользователя"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
     upsert_screen(
         bot,
         chat_id,
         message_id,
-        render_user_card_text(user),
+        render_user_card_text(user, runtime_info.as_ref()),
         crate::bot::keyboards::user_card_keyboard(user.tg_user_id, page),
+    )
+    .await
+}
+
+pub async fn admin_show_connections_summary(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    message_id: Option<MessageId>,
+) -> HandlerResult {
+    let text = match state.telemt_backend.connections_summary(10).await? {
+        Some(summary) => {
+            let mut lines = vec![
+                "📈 Top пользователей".to_string(),
+                String::new(),
+                format!(
+                    "Live connections: {} | ME: {} | Direct: {} | active users: {}",
+                    summary.current_connections,
+                    summary.current_connections_me,
+                    summary.current_connections_direct,
+                    summary.active_users
+                ),
+                String::new(),
+                "Топ по соединениям:".to_string(),
+            ];
+            if summary.top_by_connections.is_empty() {
+                lines.push("• нет данных".to_string());
+            } else {
+                for user in summary.top_by_connections.iter().take(5) {
+                    lines.push(format!(
+                        "• {} · conns {} · traffic {}",
+                        user.username,
+                        user.current_connections,
+                        format_bytes_human(user.total_octets)
+                    ));
+                }
+            }
+            lines.push(String::new());
+            lines.push("Топ по трафику:".to_string());
+            if summary.top_by_throughput.is_empty() {
+                lines.push("• нет данных".to_string());
+            } else {
+                for user in summary.top_by_throughput.iter().take(5) {
+                    lines.push(format!(
+                        "• {} · traffic {} · conns {}",
+                        user.username,
+                        format_bytes_human(user.total_octets),
+                        user.current_connections
+                    ));
+                }
+            }
+            lines.join("\n")
+        }
+        None => "📈 Top пользователей\n\nRuntime endpoint недоступен или выключен в telemt API."
+            .to_string(),
+    };
+
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::connections_summary_keyboard(),
     )
     .await
 }

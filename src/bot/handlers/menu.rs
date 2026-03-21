@@ -1,6 +1,7 @@
 use super::actions::{
-    create_user_from_input, handle_token_create_from_text, open_token_from_lookup_input,
-    open_user_from_lookup_input, process_invite_token, prompt_delete_confirmation,
+    apply_user_limit_from_input, create_user_from_input, handle_token_create_from_text,
+    open_token_from_lookup_input, open_user_from_lookup_input, process_invite_token,
+    prompt_delete_confirmation,
 };
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
@@ -62,6 +63,18 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
             let opened =
                 open_user_from_lookup_input(&bot, msg.chat.id, &state, text.trim(), page).await?;
             if opened {
+                clear_wizard_state(&state, user_id).await?;
+            }
+        }
+        Some(WizardState::AdminSetUserLimitAwaitingValue {
+            tg_user_id,
+            page: _,
+            field,
+        }) => {
+            let updated =
+                apply_user_limit_from_input(&bot, msg.chat.id, &state, tg_user_id, field, text.trim())
+                    .await?;
+            if updated {
                 clear_wizard_state(&state, user_id).await?;
             }
         }

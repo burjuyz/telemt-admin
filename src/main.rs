@@ -5,6 +5,7 @@ mod cli;
 mod config;
 mod db;
 mod link;
+mod monitor;
 mod service;
 mod telemt_backend;
 mod telemt_cfg;
@@ -110,6 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         service,
         bot_username,
     };
+    monitor::spawn_monitor(bot.clone(), state.clone());
     tracing::info!("Dispatcher initialized, bot is ready");
 
     Dispatcher::builder(bot, bot::handlers::schema())

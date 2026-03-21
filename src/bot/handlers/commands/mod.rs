@@ -1,10 +1,15 @@
 use super::actions::{process_invite_token, send_user_link};
 use super::callback_data::CallbackAction;
 use super::screens::{
-    admin_show_service_panel, admin_show_users_page, send_text_with_keyboard_removed,
-    show_admin_home, show_token_menu, show_user_home,
+    admin_show_connections_summary, admin_show_pending_requests_page, admin_show_service_panel,
+    admin_show_stats, admin_show_users_page,
+    send_text_with_keyboard_removed, show_admin_home, show_token_card, show_token_menu,
+    show_user_card, show_user_home,
 };
-use super::shared::{HandlerResult, parse_start_token, send_admin_backend_error, user_id_or_reply};
+use super::shared::{
+    AdminStartScreen, HandlerResult, StartPayload, parse_start_payload, send_admin_backend_error,
+    user_id_or_reply,
+};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
     sender_user_id, set_wizard_state,
@@ -160,18 +165,90 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     );
 
     let text = msg.text().unwrap_or("");
-    if let Some(token) = parse_start_token(text) {
-        process_invite_token(
-            &bot,
-            &msg,
-            &state,
-            user_id,
-            username.as_deref(),
-            display_name.as_deref(),
-            &token,
-        )
-        .await?;
-        return Ok(());
+    if let Some(payload) = parse_start_payload(text) {
+        match payload {
+            StartPayload::InviteToken(token) => {
+                process_invite_token(
+                    &bot,
+                    &msg,
+                    &state,
+                    user_id,
+                    username.as_deref(),
+                    display_name.as_deref(),
+                    &token,
+                )
+                .await?;
+                return Ok(());
+            }
+            StartPayload::AdminUser(target_user_id) => {
+                if !state.config.is_admin(user_id) {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Этот deep link доступен только администраторам.",
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                clear_wizard_state(&state, user_id).await?;
+                if let Some(user) = state.db.get_active_user_by_tg_user(target_user_id).await? {
+                    show_user_card(&bot, msg.chat.id, None, &user, 1, &state).await?;
+                } else {
+                    bot.send_message(msg.chat.id, "Пользователь не найден или уже неактивен.")
+                        .await?;
+                }
+                return Ok(());
+            }
+            StartPayload::AdminToken(token_id) => {
+                if !state.config.is_admin(user_id) {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Этот deep link доступен только администраторам.",
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                clear_wizard_state(&state, user_id).await?;
+                if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+                    show_token_card(&bot, msg.chat.id, None, &token, 1).await?;
+                } else {
+                    bot.send_message(msg.chat.id, "Токен не найден или уже недоступен.")
+                        .await?;
+                }
+                return Ok(());
+            }
+            StartPayload::AdminScreen(screen) => {
+                if !state.config.is_admin(user_id) {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Этот deep link доступен только администраторам.",
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                clear_wizard_state(&state, user_id).await?;
+                match screen {
+                    AdminStartScreen::Home => show_admin_home(&bot, msg.chat.id, None).await?,
+                    AdminStartScreen::Users => {
+                        admin_show_users_page(&bot, msg.chat.id, &state, 1, None).await?
+                    }
+                    AdminStartScreen::Tokens => show_token_menu(&bot, msg.chat.id, None, &state).await?,
+                    AdminStartScreen::Service => {
+                        admin_show_service_panel(&bot, msg.chat.id, &state, None).await?
+                    }
+                    AdminStartScreen::Stats => {
+                        admin_show_stats(&bot, msg.chat.id, &state, None).await?
+                    }
+                    AdminStartScreen::Pending => {
+                        admin_show_pending_requests_page(&bot, msg.chat.id, &state, 1, None)
+                            .await?
+                    }
+                    AdminStartScreen::Connections => {
+                        admin_show_connections_summary(&bot, msg.chat.id, &state, None).await?
+                    }
+                }
+                return Ok(());
+            }
+        }
     }
 
     if state.config.is_admin(user_id) {

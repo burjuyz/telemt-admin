@@ -3,7 +3,8 @@ use super::AdminActionResult;
 use crate::bot::handlers::actions::execute_service_action;
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    admin_show_service_panel, admin_show_service_panel_with_notice, show_service_action_confirm,
+    admin_show_connections_summary, admin_show_service_panel, admin_show_service_panel_with_notice,
+    show_service_action_confirm,
 };
 use crate::bot::handlers::state::BotState;
 use teloxide::prelude::{Bot, CallbackQuery};
@@ -21,6 +22,14 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_service_panel(bot, chat_id, state, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::ShowConnectionsSummary => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            admin_show_connections_summary(bot, chat_id, state, Some(message_id)).await?;
             Ok(true)
         }
         CallbackAction::ConfirmServiceAction { action } => {

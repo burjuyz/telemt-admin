@@ -1,4 +1,5 @@
 use crate::db::{InviteToken, RegistrationRequest};
+use crate::telemt_backend::TelemtUserInfo;
 use chrono::{DateTime, Local, Utc};
 
 pub fn format_date(ts: i64) -> String {
@@ -77,7 +78,49 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
     )
 }
 
-pub fn render_user_card_text(user: &RegistrationRequest) -> String {
+pub fn format_bytes_human(value: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    const TB: f64 = GB * 1024.0;
+    let value_f = value as f64;
+    if value_f >= TB {
+        format!("{:.2} TB", value_f / TB)
+    } else if value_f >= GB {
+        format!("{:.2} GB", value_f / GB)
+    } else if value_f >= MB {
+        format!("{:.2} MB", value_f / MB)
+    } else if value_f >= KB {
+        format!("{:.2} KB", value_f / KB)
+    } else {
+        format!("{value} B")
+    }
+}
+
+fn format_optional_bytes(value: Option<u64>) -> String {
+    value
+        .map(format_bytes_human)
+        .unwrap_or_else(|| "—".to_string())
+}
+
+fn format_optional_usize(value: Option<usize>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "—".to_string())
+}
+
+fn format_ip_list(values: &[String]) -> String {
+    if values.is_empty() {
+        "—".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
+pub fn render_user_card_text(
+    user: &RegistrationRequest,
+    runtime_info: Option<&TelemtUserInfo>,
+) -> String {
     let username = user
         .tg_username
         .as_deref()
@@ -101,6 +144,48 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
         })
         .unwrap_or_else(|| "—".to_string());
     let sync_error = user.last_sync_error.as_deref().unwrap_or("нет");
+    let runtime_source = runtime_info
+        .map(|info| info.source.as_str())
+        .unwrap_or("нет данных");
+    let current_connections = runtime_info
+        .and_then(|info| info.current_connections)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let active_unique_ips = runtime_info
+        .and_then(|info| info.active_unique_ips)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let recent_unique_ips = runtime_info
+        .and_then(|info| info.recent_unique_ips)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let active_ip_list = runtime_info
+        .map(|info| format_ip_list(&info.active_unique_ips_list))
+        .unwrap_or_else(|| "—".to_string());
+    let recent_ip_list = runtime_info
+        .map(|info| format_ip_list(&info.recent_unique_ips_list))
+        .unwrap_or_else(|| "—".to_string());
+    let total_octets = runtime_info
+        .map(|info| format_optional_bytes(info.total_octets))
+        .unwrap_or_else(|| "—".to_string());
+    let user_ad_tag = runtime_info
+        .and_then(|info| info.user_ad_tag.as_deref())
+        .unwrap_or("—");
+    let max_tcp_conns = runtime_info
+        .map(|info| format_optional_usize(info.max_tcp_conns))
+        .unwrap_or_else(|| "—".to_string());
+    let data_quota = runtime_info
+        .map(|info| format_optional_bytes(info.data_quota_bytes))
+        .unwrap_or_else(|| "—".to_string());
+    let max_unique_ips = runtime_info
+        .map(|info| format_optional_usize(info.max_unique_ips))
+        .unwrap_or_else(|| "—".to_string());
+    let expiration = runtime_info
+        .and_then(|info| info.expiration_rfc3339.as_deref())
+        .unwrap_or("—");
+    let links_count = runtime_info
+        .map(|info| info.links.len().to_string())
+        .unwrap_or_else(|| "0".to_string());
 
     format!(
         "👤 {}\n\n\
@@ -112,6 +197,20 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
          🔁 sync: {}\n\
          🪪 revision: {}\n\
          ⚠️ sync error: {}\n\
+         \n\
+         📡 runtime source: {}\n\
+         🔌 live connections: {}\n\
+         🌐 active unique IPs: {}\n\
+         🕘 recent unique IPs: {}\n\
+         📋 active IP list: {}\n\
+         📋 recent IP list: {}\n\
+         📦 traffic: {}\n\
+         🏷 ad tag: {}\n\
+         🛡 max TCP: {}\n\
+         🧮 quota: {}\n\
+         🌍 max unique IPs: {}\n\
+         ⏳ expires: {}\n\
+         🔗 links: {}\n\
          📅 {}",
         user_display_name(user),
         user.tg_user_id,
@@ -122,6 +221,19 @@ pub fn render_user_card_text(user: &RegistrationRequest) -> String {
         last_sync,
         last_revision,
         sync_error,
+        runtime_source,
+        current_connections,
+        active_unique_ips,
+        recent_unique_ips,
+        active_ip_list,
+        recent_ip_list,
+        total_octets,
+        user_ad_tag,
+        max_tcp_conns,
+        data_quota,
+        max_unique_ips,
+        expiration,
+        links_count,
         format_timestamp(user.created_at),
     )
 }

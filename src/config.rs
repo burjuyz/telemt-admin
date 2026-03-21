@@ -30,6 +30,9 @@ pub struct Config {
     /// Настройки control API telemt
     #[serde(default)]
     pub telemt_api: TelemtApiConfig,
+    /// Настройки уведомлений и фонового мониторинга
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,6 +62,20 @@ pub struct TelemtApiConfig {
     pub prefer_api_links: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotificationsConfig {
+    #[serde(default = "default_notifications_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_health_check_interval_secs")]
+    pub health_check_interval_secs: u64,
+    #[serde(default = "default_notify_on_health_change")]
+    pub notify_on_health_change: bool,
+    #[serde(default = "default_notify_on_runtime_alerts")]
+    pub notify_on_runtime_alerts: bool,
+    #[serde(default = "default_notify_on_new_request")]
+    pub notify_on_new_request: bool,
+}
+
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
@@ -79,6 +96,18 @@ impl Default for TelemtApiConfig {
             timeout_ms: default_telemt_api_timeout_ms(),
             allow_file_fallback: default_allow_file_fallback(),
             prefer_api_links: default_prefer_api_links(),
+        }
+    }
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_notifications_enabled(),
+            health_check_interval_secs: default_health_check_interval_secs(),
+            notify_on_health_change: default_notify_on_health_change(),
+            notify_on_runtime_alerts: default_notify_on_runtime_alerts(),
+            notify_on_new_request: default_notify_on_new_request(),
         }
     }
 }
@@ -127,6 +156,26 @@ fn default_prefer_api_links() -> bool {
     true
 }
 
+fn default_notifications_enabled() -> bool {
+    true
+}
+
+fn default_health_check_interval_secs() -> u64 {
+    60
+}
+
+fn default_notify_on_health_change() -> bool {
+    true
+}
+
+fn default_notify_on_runtime_alerts() -> bool {
+    true
+}
+
+fn default_notify_on_new_request() -> bool {
+    true
+}
+
 impl Config {
     pub fn load(path: &std::path::Path) -> Result<Self, anyhow::Error> {
         tracing::debug!("Loading config from {}", path.display());
@@ -142,6 +191,11 @@ impl Config {
                 "security.wizard_state_ttl_seconds должен быть положительным числом секунд"
             ));
         }
+        if config.notifications.health_check_interval_secs == 0 {
+            return Err(anyhow::anyhow!(
+                "notifications.health_check_interval_secs должен быть положительным"
+            ));
+        }
         tracing::info!(
             admin_count = config.admin_ids.len(),
             telemt_config_path = %config.telemt_config_path.display(),
@@ -153,6 +207,11 @@ impl Config {
             telemt_api_timeout_ms = config.telemt_api.timeout_ms,
             telemt_api_allow_file_fallback = config.telemt_api.allow_file_fallback,
             telemt_api_prefer_api_links = config.telemt_api.prefer_api_links,
+            notifications_enabled = config.notifications.enabled,
+            notifications_health_check_interval_secs = config.notifications.health_check_interval_secs,
+            notifications_notify_on_health_change = config.notifications.notify_on_health_change,
+            notifications_notify_on_runtime_alerts = config.notifications.notify_on_runtime_alerts,
+            notifications_notify_on_new_request = config.notifications.notify_on_new_request,
             security_default_days = config.security.default_token_days,
             security_max_days = config.security.max_token_days,
             allow_auto_approve_tokens = config.security.allow_auto_approve_tokens,

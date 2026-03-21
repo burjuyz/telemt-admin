@@ -18,13 +18,42 @@ impl ServiceAction {
         }
     }
 
-    fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "start" => Some(Self::Start),
             "stop" => Some(Self::Stop),
             "restart" => Some(Self::Restart),
             "reload" => Some(Self::Reload),
             "status" => Some(Self::Status),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserLimitField {
+    MaxTcpConns,
+    DataQuotaBytes,
+    MaxUniqueIps,
+    Expiration,
+}
+
+impl UserLimitField {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MaxTcpConns => "tcp",
+            Self::DataQuotaBytes => "quota",
+            Self::MaxUniqueIps => "ips",
+            Self::Expiration => "expire",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "tcp" => Some(Self::MaxTcpConns),
+            "quota" => Some(Self::DataQuotaBytes),
+            "ips" => Some(Self::MaxUniqueIps),
+            "expire" => Some(Self::Expiration),
             _ => None,
         }
     }
@@ -45,11 +74,18 @@ pub enum CallbackAction {
     ShowUsersPage { page: i64 },
     PromptUserLookup { page: i64 },
     OpenUserCard { tg_user_id: i64, page: i64 },
+    PromptUserLimit {
+        tg_user_id: i64,
+        page: i64,
+        field: UserLimitField,
+    },
     ViewUserQr { tg_user_id: i64 },
+    SendUserStartLink { tg_user_id: i64 },
     ConfirmUserBan { tg_user_id: i64, page: i64 },
     ExecuteUserBan { tg_user_id: i64, page: i64 },
     ShowStats,
     ShowServicePanel,
+    ShowConnectionsSummary,
     ConfirmServiceAction { action: ServiceAction },
     ExecuteServiceAction { action: ServiceAction },
     ShowTokenMenu,
@@ -58,6 +94,7 @@ pub enum CallbackAction {
     ShowTokenListPage { page: i64 },
     PromptTokenLookup { page: i64 },
     OpenTokenCard { token_id: i64, page: i64 },
+    SendTokenStartLink { token_id: i64 },
     ConfirmTokenRevoke { token_id: i64, page: i64 },
     ExecuteTokenRevoke { token_id: i64, page: i64 },
     PromptCreateUser,
@@ -87,7 +124,15 @@ impl CallbackAction {
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
             }
+            Self::PromptUserLimit {
+                tg_user_id,
+                page,
+                field,
+            } => format!("v1|admin|user|limit|{}|{tg_user_id}|{page}", field.as_str()),
             Self::ViewUserQr { tg_user_id } => format!("v1|admin|user|view|{tg_user_id}"),
+            Self::SendUserStartLink { tg_user_id } => {
+                format!("v1|admin|user|startlink|{tg_user_id}")
+            }
             Self::ConfirmUserBan { tg_user_id, page } => {
                 format!("v1|admin|user|ban_confirm|{tg_user_id}|{page}")
             }
@@ -96,6 +141,7 @@ impl CallbackAction {
             }
             Self::ShowStats => "v1|admin|stats".to_string(),
             Self::ShowServicePanel => "v1|admin|service".to_string(),
+            Self::ShowConnectionsSummary => "v1|admin|service|connections".to_string(),
             Self::ConfirmServiceAction { action } => {
                 format!("v1|admin|service|confirm|{}", action.as_str())
             }
@@ -112,6 +158,9 @@ impl CallbackAction {
             Self::PromptTokenLookup { page } => format!("v1|admin|token|lookup|{page}"),
             Self::OpenTokenCard { token_id, page } => {
                 format!("v1|admin|token|open|{token_id}|{page}")
+            }
+            Self::SendTokenStartLink { token_id } => {
+                format!("v1|admin|token|startlink|{token_id}")
             }
             Self::ConfirmTokenRevoke { token_id, page } => {
                 format!("v1|admin|token|revoke|confirm|{token_id}|{page}")
@@ -167,7 +216,17 @@ impl CallbackAction {
                 tg_user_id: parse_i64(tg_user_id)?,
                 page: parse_i64(page)?.max(1),
             }),
+            ["v1", "admin", "user", "limit", field, tg_user_id, page] => {
+                Some(Self::PromptUserLimit {
+                    field: UserLimitField::parse(field)?,
+                    tg_user_id: parse_i64(tg_user_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "user", "view", tg_user_id] => Some(Self::ViewUserQr {
+                tg_user_id: parse_i64(tg_user_id)?,
+            }),
+            ["v1", "admin", "user", "startlink", tg_user_id] => Some(Self::SendUserStartLink {
                 tg_user_id: parse_i64(tg_user_id)?,
             }),
             ["v1", "admin", "user", "ban_confirm", tg_user_id, page] => {
@@ -184,6 +243,7 @@ impl CallbackAction {
             }
             ["v1", "admin", "stats"] => Some(Self::ShowStats),
             ["v1", "admin", "service"] => Some(Self::ShowServicePanel),
+            ["v1", "admin", "service", "connections"] => Some(Self::ShowConnectionsSummary),
             ["v1", "admin", "service", "confirm", action] => Some(Self::ConfirmServiceAction {
                 action: ServiceAction::parse(action)?,
             }),
@@ -204,6 +264,9 @@ impl CallbackAction {
             ["v1", "admin", "token", "open", token_id, page] => Some(Self::OpenTokenCard {
                 token_id: parse_i64(token_id)?,
                 page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "token", "startlink", token_id] => Some(Self::SendTokenStartLink {
+                token_id: parse_i64(token_id)?,
             }),
             ["v1", "admin", "token", "revoke", "confirm", token_id, page] => {
                 Some(Self::ConfirmTokenRevoke {

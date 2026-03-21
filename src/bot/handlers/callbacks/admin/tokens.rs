@@ -1,5 +1,6 @@
 use super::super::common::{ack_callback, admin_callback_target, start_wizard_from_callback};
 use super::AdminActionResult;
+use crate::bot::handlers::actions::send_token_start_link;
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
     admin_show_token_list_page, show_token_card, show_token_menu, show_token_revoke_confirm,
@@ -92,6 +93,14 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), Some("Открыта карточка токена"), false).await?;
             show_token_card(bot, chat_id, Some(message_id), &token, page).await?;
+            Ok(true)
+        }
+        CallbackAction::SendTokenStartLink { token_id } => {
+            let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), Some("Отправляю deep link"), false).await?;
+            send_token_start_link(bot, chat_id, state, token_id).await?;
             Ok(true)
         }
         CallbackAction::ConfirmTokenRevoke { token_id, page } => {

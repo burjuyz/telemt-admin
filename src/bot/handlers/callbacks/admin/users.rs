@@ -1,6 +1,8 @@
 use super::super::common::{ack_callback, admin_callback_target, start_wizard_from_callback};
 use super::AdminActionResult;
-use crate::bot::handlers::actions::{has_active_users, perform_hard_ban};
+use crate::bot::handlers::actions::{
+    has_active_users, perform_hard_ban, send_user_start_link, user_limit_input_help,
+};
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
     admin_show_users_page, send_user_qr_to_admin, show_user_ban_confirm, show_user_card,
@@ -46,7 +48,43 @@ pub async fn handle(
                 return Ok(true);
             };
             ack_callback(bot, q.id.clone(), Some("Открыта карточка"), false).await?;
-            show_user_card(bot, chat_id, Some(message_id), &user, page).await?;
+            show_user_card(bot, chat_id, Some(message_id), &user, page, state).await?;
+            Ok(true)
+        }
+        CallbackAction::PromptUserLimit {
+            tg_user_id,
+            page,
+            field,
+        } => {
+            let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Пользователь уже неактивен"), true).await?;
+                return Ok(true);
+            };
+            start_wizard_from_callback(
+                bot,
+                q,
+                state,
+                CallbackAction::PromptUserLimit {
+                    tg_user_id,
+                    page,
+                    field,
+                },
+                "Жду новое значение лимита",
+                format!(
+                    "Пользователь: {}\nИзмените параметр и отправьте новое значение следующим сообщением.\n\n{}",
+                    crate::bot::handlers::format::user_display_name(&user),
+                    user_limit_input_help(field)
+                ),
+            )
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::SendUserStartLink { tg_user_id } => {
+            let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), Some("Отправляю deep link"), false).await?;
+            send_user_start_link(bot, chat_id, state, tg_user_id).await?;
             Ok(true)
         }
         CallbackAction::ViewUserQr { tg_user_id } => {

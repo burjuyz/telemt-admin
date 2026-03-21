@@ -63,6 +63,15 @@ pub async fn start_wizard_from_callback(
         CallbackAction::PromptUserLookup { page } => {
             WizardState::AdminFindUserAwaitingTarget { page }
         }
+        CallbackAction::PromptUserLimit {
+            tg_user_id,
+            page,
+            field,
+        } => WizardState::AdminSetUserLimitAwaitingValue {
+            tg_user_id,
+            page,
+            field,
+        },
         CallbackAction::PromptTokenLookup { page } => {
             WizardState::AdminFindTokenAwaitingCode { page }
         }
