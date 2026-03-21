@@ -29,6 +29,7 @@ CI/CD:
 - если меняются архитектурные границы или модульная структура, синхронно обновлять `docs/*` и `.cursor/rules/*` в той же серии изменений;
 - если меняются инварианты интеграции с `telemt`, стратегия fallback, rollout или security-модель, обновлять соответствующий ADR в `docs/adr/` или добавлять новый;
 - если меняется эксплуатационное поведение control API, синхронно обновлять `docs/runbook.md`;
+- если меняются notifications, health/runtime alerts или фоновый polling, синхронно обновлять `README.md`, `docs/overview.md`, `docs/architecture.md` и `docs/runbook.md`;
 - при изменениях bot UX проверять вручную wizard-flow, основные inline-экраны и восстановление wizard-state после рестарта.
 
 Навигация по документации:

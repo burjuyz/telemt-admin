@@ -17,7 +17,8 @@
 
 - задана секция `[telemt_api]`;
 - `base_url` указывает на фактический bind control API;
-- `auth_header` в точности совпадает с `server.api.auth_header`.
+- `auth_header` в точности совпадает с `server.api.auth_header`;
+- если используется фоновый мониторинг, настроена секция `[notifications]`.
 
 ## Рекомендуемая конфигурация
 
@@ -41,6 +42,13 @@ auth_header = "Bearer <generated-secret>"
 timeout_ms = 5000
 allow_file_fallback = true
 prefer_api_links = true
+
+[notifications]
+enabled = true
+health_check_interval_secs = 60
+notify_on_health_change = true
+notify_on_runtime_alerts = true
+notify_on_new_request = true
 ```
 
 ## Порядок rollout
@@ -56,6 +64,7 @@ prefer_api_links = true
 - настроить `[server.api]` в `telemt`;
 - выполнить restart `telemt`, если менялись параметры `server.api`;
 - включить `[telemt_api].enabled = true` в `telemt-admin`;
+- проверить или задать политику `[notifications]` в `telemt-admin`;
 - перезапустить `telemt-admin`.
 
 ### Фаза 3. Подтверждение работоспособности
@@ -70,7 +79,14 @@ prefer_api_links = true
    - systemd state;
    - health control API;
    - runtime/system info;
-   - security posture.
+   - security posture;
+   - блок нагрузки (`uptime`, connections, bad connections, handshake timeouts);
+   - live connections (`total`, `ME`, `Direct`, `active users`);
+   - экран `Top пользователей`.
+6. открыть карточку пользователя и убедиться, что:
+   - подгружаются live runtime-данные;
+   - кнопки изменения лимитов работают через control API.
+7. при включённых `[notifications]` проверить, что новые manual-заявки и health/runtime alerts приходят администраторам.
 
 ## Ожидаемое поведение fallback
 
@@ -91,6 +107,27 @@ Fallback не должен быть скрытым operationally:
 - `last_sync_error` — последнее известное описание проблемы синхронизации;
 - `last_seen_revision` — последняя revision, полученная от control API;
 - `last_synced_at` — время последней фиксации sync-состояния.
+
+## Фоновый мониторинг и уведомления
+
+Секция `[notifications]` управляет фоновым polling `telemt` API в `telemt-admin`.
+
+- `enabled = true` включает фоновую задачу мониторинга;
+- `health_check_interval_secs` задаёт интервал опроса;
+- `notify_on_health_change` включает уведомления о:
+  - недоступности/восстановлении control API;
+  - смене health status;
+  - смене `accepting_new_connections`;
+  - смене `me_runtime_ready`;
+- `notify_on_runtime_alerts` включает уведомления о:
+  - появлении/исчезновении `unhealthy upstream`;
+  - проблемах и восстановлении `ME self-test` (`KDF`, `time skew`);
+- `notify_on_new_request` включает уведомления администраторам о новых manual-заявках.
+
+Operational note:
+
+- если на staging/production уведомления слишком шумные, сначала уменьшайте scope через флаги `notify_on_*`, а не выключайте весь `[telemt_api]`;
+- при `notifications.enabled = false` бот остаётся полностью рабочим, но перестаёт слать push-уведомления и health/runtime alerts.
 
 ## Когда нужен restart `telemt`
 
@@ -114,6 +151,7 @@ Restart обязателен, если менялись параметры `[ser
 Если rollout проходит неуспешно:
 
 1. установить `[telemt_api].enabled = false` в `telemt-admin.toml`;
-2. оставить `telemt` работающим в прежнем режиме;
-3. перезапустить `telemt-admin`;
-4. убедиться, что approve, `/link` и delete снова работают через legacy-path.
+2. при необходимости отключить `[notifications].enabled`, чтобы убрать фоновые API health-check;
+3. оставить `telemt` работающим в прежнем режиме;
+4. перезапустить `telemt-admin`;
+5. убедиться, что approve, `/link` и delete снова работают через legacy-path.
