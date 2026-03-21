@@ -316,6 +316,41 @@ impl Db {
         Ok(user_id)
     }
 
+    /// Активные пользователи, у которых подстрока `needle` встречается в @username, отображаемом имени или логине telemt.
+    pub async fn search_active_users_by_partial(
+        &self,
+        needle: &str,
+        limit: i64,
+    ) -> Result<Vec<RegistrationRequest>, anyhow::Error> {
+        let n = needle.trim();
+        if n.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let limit = limit.clamp(1, 50);
+        let rows = sqlx::query_as::<_, RegistrationRequest>(
+            "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at,
+                    backend_mode, last_sync_error, last_seen_revision, last_synced_at
+             FROM registration_requests
+             WHERE status = ?
+               AND (
+                 (tg_username IS NOT NULL AND instr(lower(tg_username), lower(?)) > 0)
+                 OR (tg_display_name IS NOT NULL AND instr(lower(tg_display_name), lower(?)) > 0)
+                 OR (telemt_username IS NOT NULL AND instr(lower(telemt_username), lower(?)) > 0)
+               )
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?",
+        )
+        .bind(STATUS_APPROVED)
+        .bind(n)
+        .bind(n)
+        .bind(n)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn count_pending_requests(&self) -> Result<i64, anyhow::Error> {
         let total = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM registration_requests WHERE status = ?",

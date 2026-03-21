@@ -31,8 +31,8 @@ pub async fn handle(
                 q,
                 state,
                 CallbackAction::PromptUserLookup { page },
-                "Жду Telegram ID или @username",
-                "Отправьте Telegram ID или @username следующим сообщением.\n\nСписок можно оставить открытым.".to_string(),
+                "Жду ID, @username или часть имени",
+                "Отправьте Telegram ID, @username или часть имени/ника следующим сообщением.\n\nСписок можно оставить открытым.".to_string(),
             )
             .await?;
             Ok(true)
@@ -88,7 +88,7 @@ pub async fn handle(
                 state,
                 CallbackAction::PromptCreateUser,
                 "Жду ID или @username",
-                "Отправьте Telegram ID или @username следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.".to_string(),
+                "Отправьте Telegram ID или точный @username следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.".to_string(),
             )
             .await?;
             Ok(true)

@@ -55,6 +55,19 @@ pub struct TelemtRuntimeSnapshot {
     pub api_whitelist_enabled: Option<bool>,
     pub api_whitelist_entries: Option<usize>,
     pub api_auth_header_enabled: Option<bool>,
+    /// `/v1/runtime/gates`
+    pub accepting_new_connections: Option<bool>,
+    pub me_runtime_ready: Option<bool>,
+    pub use_middle_proxy: Option<bool>,
+    pub route_mode: Option<String>,
+    /// `/v1/runtime/me-selftest` — состояния KDF и рассинхрона времени
+    pub me_selftest_kdf_state: Option<String>,
+    pub me_selftest_timeskew_state: Option<String>,
+    pub me_selftest_enabled: Option<bool>,
+    /// `/v1/runtime/upstream_quality`
+    pub upstream_configured_total: Option<u64>,
+    pub upstream_healthy_total: Option<u64>,
+    pub upstream_unhealthy_total: Option<u64>,
     pub events: Vec<TelemtRuntimeEvent>,
     pub last_revision: Option<String>,
 }
@@ -380,13 +393,87 @@ impl ApiTelemtBackend {
             api_whitelist_entries,
             api_auth_header_enabled,
         } = security.data;
+        let events_path = format!(
+            "/v1/runtime/events/recent?limit={}",
+            recent_events_limit.max(1)
+        );
         let events = self
-            .get_success::<RuntimeEventsData>(&format!(
-                "/v1/runtime/events/recent?limit={}",
-                recent_events_limit.max(1)
-            ))
+            .get_success::<RuntimeEventsData>(&events_path)
             .await
             .ok();
+
+        let gates = match self.get_success::<RuntimeGatesData>("/v1/runtime/gates").await {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/gates недоступен");
+                None
+            }
+        };
+        let me_selftest = match self
+            .get_success::<MeSelftestTop>("/v1/runtime/me-selftest")
+            .await
+        {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/me-selftest недоступен");
+                None
+            }
+        };
+        let upstream = match self
+            .get_success::<UpstreamQualityTop>("/v1/runtime/upstream_quality")
+            .await
+        {
+            Ok(envelope) => Some(envelope.data),
+            Err(error) => {
+                tracing::debug!(error = %error, "telemt API /v1/runtime/upstream_quality недоступен");
+                None
+            }
+        };
+
+        let (
+            accepting_new_connections,
+            me_runtime_ready,
+            use_middle_proxy,
+            route_mode,
+        ) = match &gates {
+            Some(g) => (
+                Some(g.accepting_new_connections),
+                Some(g.me_runtime_ready),
+                Some(g.use_middle_proxy),
+                Some(g.route_mode.clone()),
+            ),
+            None => (None, None, None, None),
+        };
+
+        let (me_selftest_enabled, me_selftest_kdf_state, me_selftest_timeskew_state) =
+            match &me_selftest {
+                Some(m) => {
+                    let kdf = m
+                        .data
+                        .as_ref()
+                        .map(|p| p.kdf.state.clone());
+                    let timeskew = m
+                        .data
+                        .as_ref()
+                        .map(|p| p.timeskew.state.clone());
+                    (Some(m.enabled), kdf, timeskew)
+                }
+                None => (None, None, None),
+            };
+
+        let (upstream_configured_total, upstream_healthy_total, upstream_unhealthy_total) =
+            match &upstream {
+                Some(u) if u.enabled => match &u.summary {
+                    Some(s) => (
+                        Some(s.configured_total),
+                        Some(s.healthy_total),
+                        Some(s.unhealthy_total),
+                    ),
+                    None => (None, None, None),
+                },
+                _ => (None, None, None),
+            };
+
         let event_rows = events
             .map(|payload| {
                 payload
@@ -420,6 +507,16 @@ impl ApiTelemtBackend {
             api_whitelist_enabled: Some(api_whitelist_enabled),
             api_whitelist_entries: Some(api_whitelist_entries),
             api_auth_header_enabled: Some(api_auth_header_enabled),
+            accepting_new_connections,
+            me_runtime_ready,
+            use_middle_proxy,
+            route_mode,
+            me_selftest_kdf_state,
+            me_selftest_timeskew_state,
+            me_selftest_enabled,
+            upstream_configured_total,
+            upstream_healthy_total,
+            upstream_unhealthy_total,
             events: event_rows,
             last_revision: revision,
         })
@@ -666,4 +763,49 @@ struct ApiEventRecord {
     ts_epoch_secs: i64,
     event_type: String,
     context: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeGatesData {
+    accepting_new_connections: bool,
+    me_runtime_ready: bool,
+    use_middle_proxy: bool,
+    route_mode: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeSelftestTop {
+    enabled: bool,
+    #[serde(default)]
+    data: Option<MeSelftestPayloadDe>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeSelftestPayloadDe {
+    kdf: MeSelftestKdfDe,
+    timeskew: MeSelftestTimeskewDe,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeSelftestKdfDe {
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeSelftestTimeskewDe {
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstreamQualityTop {
+    enabled: bool,
+    #[serde(default)]
+    summary: Option<UpstreamQualitySummaryDe>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstreamQualitySummaryDe {
+    configured_total: u64,
+    healthy_total: u64,
+    unhealthy_total: u64,
 }

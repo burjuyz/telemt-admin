@@ -192,6 +192,42 @@ pub fn pending_result_keyboard(page: i64) -> InlineKeyboardMarkup {
     ])
 }
 
+fn truncate_callback_button_label(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let take = max_chars.saturating_sub(1);
+    format!(
+        "{}…",
+        text.chars().take(take).collect::<String>()
+    )
+}
+
+/// Кнопки выбора пользователя после частичного поиска (одна кнопка — одна строка).
+pub fn user_lookup_candidates_keyboard(
+    candidates: &[(i64, String)],
+    page: i64,
+) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = candidates
+        .iter()
+        .map(|(tg_user_id, label)| {
+            vec![InlineKeyboardButton::callback(
+                truncate_callback_button_label(label, 54),
+                CallbackAction::OpenUserCard {
+                    tg_user_id: *tg_user_id,
+                    page,
+                }
+                .encode(),
+            )]
+        })
+        .collect();
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ К списку пользователей",
+        CallbackAction::ShowUsersPage { page }.encode(),
+    )]);
+    InlineKeyboardMarkup::new(rows)
+}
+
 pub fn users_page_keyboard(
     users: &[(i64, String)],
     page: i64,

@@ -141,18 +141,26 @@ async fn render_service_panel_text(
     let active_tokens = state.db.count_active_invite_tokens().await?;
 
     let status_label = service_status_label(&summary.active_state, &summary.sub_state);
+    let admin_version = env!("CARGO_PKG_VERSION");
 
-    let mut lines = vec![format!(
-        "⚙️ Сервис {}\nСтатус: {}",
+    let mut lines = vec![
+        "⚙️ Статус".to_string(),
+        String::new(),
+        format!("telemt-admin: v{} · бот активен", admin_version),
+    ];
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Юнит {}: {}",
         state.service.service_name(),
         status_label
-    )];
+    ));
     lines.push(format!(
-        "Проверка: {}",
+        "Проверка systemd: {}",
         if summary.success {
             "OK"
         } else {
-            "Ошибка"
+            "ошибка"
         }
     ));
 
@@ -173,9 +181,9 @@ async fn render_service_panel_text(
         stats.approved, stats.pending, active_tokens
     ));
     lines.push(format!(
-        "Backend: {}",
+        "Режим провижининга: {}",
         match state.telemt_backend.mode() {
-            crate::telemt_backend::TelemtBackendMode::LegacyFile => "legacy file/systemd",
+            crate::telemt_backend::TelemtBackendMode::LegacyFile => "файл + systemd",
             crate::telemt_backend::TelemtBackendMode::ControlApi => "control API",
         }
     ));
@@ -189,32 +197,70 @@ async fn render_service_panel_text(
 
     if let Some(snapshot) = state.telemt_backend.runtime_snapshot(6).await? {
         lines.push(String::new());
-        lines.push("Control API:".to_string());
-        lines.push(format!("• Источник: {}", snapshot.source.as_str()));
-        lines.push(format!("• Health: {}", snapshot.health_status));
+        lines.push("Демон (control API)".to_string());
+        lines.push(format!("Профиль: {}", snapshot.source.as_str()));
         lines.push(format!(
-            "• API read-only: {}",
-            if snapshot.api_read_only {
-                "да"
-            } else {
-                "нет"
-            }
+            "Версия: {} | Health: {} | read-only: {}",
+            snapshot
+                .build_version
+                .as_deref()
+                .unwrap_or("—"),
+            snapshot.health_status,
+            if snapshot.api_read_only { "да" } else { "нет" }
         ));
-        if let Some(version) = snapshot.build_version {
-            lines.push(format!("• Версия telemt: {}", version));
+        if let Some(mode) = &snapshot.transport_mode {
+            lines.push(format!("Транспорт: {}", mode));
         }
-        if let Some(transport_mode) = snapshot.transport_mode {
-            lines.push(format!("• Транспорт: {}", transport_mode));
+        if let (Some(acc), Some(me_ready), Some(proxy), Some(route)) = (
+            snapshot.accepting_new_connections,
+            snapshot.me_runtime_ready,
+            snapshot.use_middle_proxy,
+            snapshot.route_mode.as_deref(),
+        ) {
+            lines.push(format!(
+                "Маршрут: {} | middle proxy: {} | ME runtime: {} | приём соединений: {}",
+                route,
+                if proxy { "да" } else { "нет" },
+                if me_ready { "да" } else { "нет" },
+                if acc { "да" } else { "нет" }
+            ));
         }
-        if let Some(startup_status) = snapshot.startup_status {
+        if let (Some(cfg), Some(ok), Some(bad)) = (
+            snapshot.upstream_configured_total,
+            snapshot.upstream_healthy_total,
+            snapshot.upstream_unhealthy_total,
+        ) {
+            lines.push(format!("Upstream: здоровых {} из {}", ok, cfg));
+            if bad > 0 {
+                lines.push(format!("⚠️ Нездоровых upstream: {}", bad));
+            }
+        }
+        match snapshot.me_selftest_enabled {
+            Some(true) => {
+                let kdf = snapshot
+                    .me_selftest_kdf_state
+                    .as_deref()
+                    .unwrap_or("—");
+                let skew = snapshot
+                    .me_selftest_timeskew_state
+                    .as_deref()
+                    .unwrap_or("—");
+                lines.push(format!("ME self-test: KDF `{}` · время `{}`", kdf, skew));
+            }
+            Some(false) => {
+                lines.push("ME self-test: данные пока недоступны (ME pool)".to_string());
+            }
+            None => {}
+        }
+        if let Some(startup_status) = snapshot.startup_status.as_deref() {
             let progress = snapshot
                 .startup_progress_pct
                 .map(|value| format!("{:.1}%", value))
                 .unwrap_or_else(|| "—".to_string());
-            lines.push(format!("• Startup: {} ({})", startup_status, progress));
+            lines.push(format!("Запуск: {} ({})", startup_status, progress));
         }
-        if let Some(stage) = snapshot.startup_stage {
-            lines.push(format!("• Этап: {}", compact_line(&stage, 60)));
+        if let Some(stage) = snapshot.startup_stage.as_deref() {
+            lines.push(format!("Этап: {}", compact_line(stage, 60)));
         }
         if let Some(enabled) = snapshot.api_whitelist_enabled {
             let entries = snapshot
@@ -222,30 +268,26 @@ async fn render_service_panel_text(
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "—".to_string());
             lines.push(format!(
-                "• API whitelist: {} ({})",
+                "API whitelist: {} ({})",
                 if enabled {
-                    "включён"
+                    "вкл"
                 } else {
-                    "выключен"
+                    "выкл"
                 },
                 entries
             ));
         }
         if let Some(enabled) = snapshot.api_auth_header_enabled {
             lines.push(format!(
-                "• API auth header: {}",
-                if enabled {
-                    "включён"
-                } else {
-                    "выключен"
-                }
+                "API auth header: {}",
+                if enabled { "вкл" } else { "выкл" }
             ));
         }
-        if let Some(revision) = snapshot.last_revision {
-            lines.push(format!("• Revision: {}", compact_line(&revision, 24)));
+        if let Some(revision) = snapshot.last_revision.as_deref() {
+            lines.push(format!("Revision: {}", compact_line(revision, 24)));
         }
         lines.push(String::new());
-        lines.push("События control API:".to_string());
+        lines.push("События API:".to_string());
         if snapshot.events.is_empty() {
             lines.push("• нет данных".to_string());
         } else {

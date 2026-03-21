@@ -8,29 +8,6 @@ use teloxide::types::{MessageId, ParseMode};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-pub enum CreateTarget {
-    UserId(i64),
-    Username(String),
-}
-
-pub fn parse_create_target(arg: &str) -> Option<CreateTarget> {
-    let trimmed = arg.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if let Ok(user_id) = trimmed.parse::<i64>() {
-        return Some(CreateTarget::UserId(user_id));
-    }
-
-    let username = trimmed.strip_prefix('@')?.trim();
-    if username.is_empty() {
-        return None;
-    }
-
-    Some(CreateTarget::Username(username.to_string()))
-}
-
 pub fn parse_start_token(text: &str) -> Option<String> {
     let mut parts = text.split_whitespace();
     let command = parts.next()?;
