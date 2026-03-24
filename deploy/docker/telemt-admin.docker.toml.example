@@ -1,0 +1,33 @@
+# Пример конфигурации для Docker (без секретов).
+# Скопируйте в /etc/telemt-admin/telemt-admin.toml или смонтируйте как volume.
+# Секреты задавайте через TELEMT_ADMIN__* / TELOXIDE_TOKEN или env в Compose.
+
+# bot_token = "..."  # или TELEMT_ADMIN__BOT_TOKEN / TELOXIDE_TOKEN
+admin_ids = [123456789]
+
+[runtime]
+mode = "external"
+label = "docker"
+
+db_path = "/var/lib/telemt-admin/state.db"
+telemt_config_path = "/etc/telemt.toml"
+
+[telemt_api]
+enabled = true
+base_url = "http://telemt:9091"
+# auth_header = "Bearer ..."  # или TELEMT_ADMIN__TELEMT_API__AUTH_HEADER
+timeout_ms = 5000
+allow_file_fallback = false
+prefer_api_links = true
+
+[notifications]
+enabled = true
+health_check_interval_secs = 60
+notify_on_health_change = true
+notify_on_runtime_alerts = true
+notify_on_new_request = true
+
+[security]
+default_token_days = 14
+max_token_days = 180
+allow_auto_approve_tokens = true

@@ -1,0 +1,23 @@
+# Пример: только telemt-admin. Процесс telemt должен быть доступен по сети
+# (например отдельный compose-стек или хост) — укажите telemt_api.base_url в конфиге.
+#
+# Запуск:
+#   cp .env.example .env
+#   docker compose up -d
+# Рядом с этим файлом ожидаются:
+#   - .env
+#   - config/telemt-admin.toml
+#   - data/
+
+services:
+  telemt-admin:
+    image: ${TELEMT_ADMIN_IMAGE:-ghcr.io/fgbm/telemt-admin:latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/telemt-admin.toml:/etc/telemt-admin/telemt-admin.toml:ro
+      - ./data:/var/lib/telemt-admin
+    environment:
+      RUST_LOG: info
+      # Секреты и точечные overrides храните в .env (см. README / ADR 004).
