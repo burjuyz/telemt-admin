@@ -1,0 +1,191 @@
+//! Переменные окружения `TELEMT_ADMIN__*` как overlay поверх TOML (см. ADR 004).
+
+use std::path::PathBuf;
+
+use crate::config::Config;
+use crate::runtime::RuntimeMode;
+
+const PREFIX: &str = "TELEMT_ADMIN__";
+
+/// Применить whitelist env-overrides. Возвращает список имён установленных ключей (без значений).
+pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
+    let mut applied = Vec::new();
+
+    if let Some(v) = read_nonempty("BOT_TOKEN") {
+        config.bot_token = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_TOKEN".to_string());
+    }
+
+    if let Some(v) = read_nonempty("ADMIN_IDS") {
+        config.admin_ids = parse_admin_ids(&v)?;
+        applied.push("TELEMT_ADMIN__ADMIN_IDS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_CONFIG_PATH") {
+        config.telemt_config_path = PathBuf::from(v);
+        applied.push("TELEMT_ADMIN__TELEMT_CONFIG_PATH".to_string());
+    }
+
+    if let Some(v) = read_nonempty("DB_PATH") {
+        config.db_path = PathBuf::from(v);
+        applied.push("TELEMT_ADMIN__DB_PATH".to_string());
+    }
+
+    if let Some(v) = read_nonempty("SERVICE_NAME") {
+        config.service_name = v;
+        applied.push("TELEMT_ADMIN__SERVICE_NAME".to_string());
+    }
+
+    if let Some(v) = read_nonempty("RUNTIME__MODE") {
+        config.runtime.get_or_insert_with(default_runtime_section);
+        if let Some(r) = config.runtime.as_mut() {
+            r.mode = parse_runtime_mode(&v)?;
+        }
+        applied.push("TELEMT_ADMIN__RUNTIME__MODE".to_string());
+    }
+
+    if let Some(v) = read_nonempty("RUNTIME__SERVICE_NAME") {
+        config.runtime.get_or_insert_with(default_runtime_section);
+        if let Some(r) = config.runtime.as_mut() {
+            r.service_name = Some(v);
+        }
+        applied.push("TELEMT_ADMIN__RUNTIME__SERVICE_NAME".to_string());
+    }
+
+    if let Some(v) = read_nonempty("RUNTIME__LABEL") {
+        config.runtime.get_or_insert_with(default_runtime_section);
+        if let Some(r) = config.runtime.as_mut() {
+            r.label = Some(v);
+        }
+        applied.push("TELEMT_ADMIN__RUNTIME__LABEL".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__ENABLED") {
+        config.telemt_api.enabled = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__TELEMT_API__ENABLED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__BASE_URL") {
+        config.telemt_api.base_url = v;
+        applied.push("TELEMT_ADMIN__TELEMT_API__BASE_URL".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__AUTH_HEADER") {
+        config.telemt_api.auth_header = Some(v);
+        applied.push("TELEMT_ADMIN__TELEMT_API__AUTH_HEADER".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__TIMEOUT_MS") {
+        config.telemt_api.timeout_ms = v.trim().parse::<u64>().map_err(|_| {
+            anyhow::anyhow!("TELEMT_ADMIN__TELEMT_API__TIMEOUT_MS: ожидается положительное целое")
+        })?;
+        if config.telemt_api.timeout_ms == 0 {
+            return Err(anyhow::anyhow!(
+                "TELEMT_ADMIN__TELEMT_API__TIMEOUT_MS должен быть > 0"
+            ));
+        }
+        applied.push("TELEMT_ADMIN__TELEMT_API__TIMEOUT_MS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__ALLOW_FILE_FALLBACK") {
+        config.telemt_api.allow_file_fallback = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__TELEMT_API__ALLOW_FILE_FALLBACK".to_string());
+    }
+
+    if let Some(v) = read_nonempty("TELEMT_API__PREFER_API_LINKS") {
+        config.telemt_api.prefer_api_links = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__TELEMT_API__PREFER_API_LINKS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("NOTIFICATIONS__ENABLED") {
+        config.notifications.enabled = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__NOTIFICATIONS__ENABLED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("NOTIFICATIONS__HEALTH_CHECK_INTERVAL_SECS") {
+        let n = v.trim().parse::<u64>().map_err(|_| {
+            anyhow::anyhow!(
+                "TELEMT_ADMIN__NOTIFICATIONS__HEALTH_CHECK_INTERVAL_SECS: ожидается положительное целое"
+            )
+        })?;
+        if n == 0 {
+            return Err(anyhow::anyhow!(
+                "TELEMT_ADMIN__NOTIFICATIONS__HEALTH_CHECK_INTERVAL_SECS должен быть > 0"
+            ));
+        }
+        config.notifications.health_check_interval_secs = n;
+        applied.push("TELEMT_ADMIN__NOTIFICATIONS__HEALTH_CHECK_INTERVAL_SECS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("NOTIFICATIONS__NOTIFY_ON_HEALTH_CHANGE") {
+        config.notifications.notify_on_health_change = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__NOTIFICATIONS__NOTIFY_ON_HEALTH_CHANGE".to_string());
+    }
+
+    if let Some(v) = read_nonempty("NOTIFICATIONS__NOTIFY_ON_RUNTIME_ALERTS") {
+        config.notifications.notify_on_runtime_alerts = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__NOTIFICATIONS__NOTIFY_ON_RUNTIME_ALERTS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("NOTIFICATIONS__NOTIFY_ON_NEW_REQUEST") {
+        config.notifications.notify_on_new_request = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__NOTIFICATIONS__NOTIFY_ON_NEW_REQUEST".to_string());
+    }
+
+    Ok(applied)
+}
+
+fn read_nonempty(suffix: &str) -> Option<String> {
+    let key = format!("{PREFIX}{suffix}");
+    std::env::var(&key).ok().and_then(|v| {
+        let t = v.trim();
+        if t.is_empty() { None } else { Some(v) }
+    })
+}
+
+fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
+    match s.trim().to_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(anyhow::anyhow!("ожидается true/false (или 1/0)")),
+    }
+}
+
+fn parse_admin_ids(s: &str) -> Result<Vec<i64>, anyhow::Error> {
+    let mut out = Vec::new();
+    for part in s.split(',') {
+        let t = part.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let id: i64 = t
+            .parse()
+            .map_err(|_| anyhow::anyhow!("TELEMT_ADMIN__ADMIN_IDS: неверный id «{}»", t))?;
+        out.push(id);
+    }
+    if out.is_empty() {
+        return Err(anyhow::anyhow!(
+            "TELEMT_ADMIN__ADMIN_IDS: нужен хотя бы один admin id"
+        ));
+    }
+    Ok(out)
+}
+
+fn parse_runtime_mode(s: &str) -> Result<RuntimeMode, anyhow::Error> {
+    match s.trim().to_lowercase().as_str() {
+        "systemd" => Ok(RuntimeMode::Systemd),
+        "external" => Ok(RuntimeMode::External),
+        "none" => Ok(RuntimeMode::None),
+        _ => Err(anyhow::anyhow!(
+            "TELEMT_ADMIN__RUNTIME__MODE: ожидается systemd|external|none"
+        )),
+    }
+}
+
+fn default_runtime_section() -> crate::config::RuntimeSection {
+    crate::config::RuntimeSection {
+        mode: RuntimeMode::Systemd,
+        service_name: None,
+        label: None,
+    }
+}

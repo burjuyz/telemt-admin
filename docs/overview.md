@@ -35,6 +35,8 @@
 - Linux x86_64 (glibc) с `systemd`;
 - bootstrap-установка через `scripts/install.sh`.
 
+Дополнительно поддерживается развёртывание без привязки к unit на хосте (Docker и т.п.): секция `[runtime]`, режим `external`, опора на control API; см. `docs/adr/003-runtime-agnostic-deployment.md`. Для Docker допустимы точечные overrides через whitelist `TELEMT_ADMIN__*` (см. `docs/adr/004-config-sources-and-docker-defaults.md`).
+
 Ключевые инварианты:
 
 - пользователь `telemt` маппится как `tg_<telegram_user_id>`;

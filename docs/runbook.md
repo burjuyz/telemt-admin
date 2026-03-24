@@ -4,6 +4,18 @@
 
 Этот документ описывает, как включать и проверять API-first интеграцию `telemt-admin` с `telemt`, а также как откатываться на legacy-путь при проблемах.
 
+## Docker / `runtime = external`
+
+Если бот запущен в контейнере без доступа к host systemd:
+
+- задайте в `telemt-admin.toml` секцию `[runtime]` с `mode = "external"` (или `none`);
+- убедитесь, что `[telemt_api].base_url` указывает на реальный адрес control API (имя сервиса в Docker-сети, а не только `127.0.0.1`);
+- для чисто API-сценария рекомендуется `allow_file_fallback = false`.
+
+Кнопки start/stop/restart/reload на экране `/service` в этих режимах скрыты; диагностика идёт через control API.
+
+Переменные `TELEMT_ADMIN__*` (whitelist) применяются после TOML и удобны для Compose; см. `docs/adr/004-config-sources-and-docker-defaults.md`.
+
 ## Предусловия
 
 На стороне `telemt`:

@@ -134,8 +134,9 @@ async fn render_service_panel_text(
     state: &BotState,
     notice: Option<&str>,
 ) -> Result<String, anyhow::Error> {
-    let summary = state.service.summary().await;
-    let service_events = state.service.recent_events(3).await;
+    let caps = state.telemt_runtime.capabilities();
+    let summary = state.telemt_runtime.summary().await;
+    let service_events = state.telemt_runtime.recent_events(3).await;
     let admin_events = state.db.list_recent_admin_activities(4).await?;
     let stats = state.db.admin_stats().await?;
     let active_tokens = state.db.count_active_invite_tokens().await?;
@@ -154,7 +155,11 @@ async fn render_service_panel_text(
         }
     };
 
-    let status_label = service_status_label(&summary.active_state, &summary.sub_state);
+    let status_label = if caps.shows_systemd_unit {
+        service_status_label(&summary.active_state, &summary.sub_state)
+    } else {
+        format!("{} · {}", summary.active_state, summary.sub_state)
+    };
     let admin_version = env!("CARGO_PKG_VERSION");
 
     let mut lines = vec![
@@ -164,32 +169,52 @@ async fn render_service_panel_text(
     ];
 
     lines.push(String::new());
-    lines.push(format!(
-        "Юнит {}: {}",
-        state.service.service_name(),
-        status_label
-    ));
-    lines.push(format!(
-        "Проверка systemd: {}",
-        if summary.success {
-            "OK"
-        } else {
-            "ошибка"
-        }
-    ));
+    if caps.shows_systemd_unit {
+        lines.push(format!(
+            "Юнит {}: {}",
+            state.telemt_runtime.display_label(),
+            status_label
+        ));
+        lines.push(format!(
+            "Проверка systemd: {}",
+            if summary.success {
+                "OK"
+            } else {
+                "ошибка"
+            }
+        ));
+    } else {
+        lines.push(format!(
+            "Telemt ({}): {}",
+            state.telemt_runtime.display_label(),
+            status_label
+        ));
+        lines.push(format!(
+            "Статус host-runtime: {}",
+            if summary.success {
+                "OK"
+            } else {
+                "ошибка"
+            }
+        ));
+    }
 
     if let Some(notice) = notice {
         lines.push(format!("Действие: {}", notice));
     }
 
-    lines.push(format!(
-        "Unit: {} | PID: {}",
-        summary.unit_file_state,
-        summary
-            .main_pid
-            .map(|pid| pid.to_string())
-            .unwrap_or_else(|| "—".to_string())
-    ));
+    if caps.shows_systemd_unit {
+        lines.push(format!(
+            "Unit: {} | PID: {}",
+            summary.unit_file_state,
+            summary
+                .main_pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "—".to_string())
+        ));
+    } else {
+        lines.push("Unit/PID: не применимо (runtime external/none)".to_string());
+    }
     lines.push(format!(
         "Пользователи: {} | Заявки: {} | Токены: {}",
         stats.approved, stats.pending, active_tokens
@@ -341,7 +366,14 @@ async fn render_service_panel_text(
     }
 
     lines.push(String::new());
-    lines.push("События сервиса:".to_string());
+    lines.push(
+        if caps.shows_journal_tail {
+            "События сервиса:"
+        } else {
+            "События сервиса (journal недоступен в этом runtime):"
+        }
+        .to_string(),
+    );
     if service_events.lines.is_empty() {
         lines.push(
             service_events
@@ -704,32 +736,46 @@ pub async fn admin_show_stats(
     message_id: Option<MessageId>,
 ) -> HandlerResult {
     let stats = state.db.admin_stats().await?;
-    let summary = state.service.summary().await;
+    let caps = state.telemt_runtime.capabilities();
+    let summary = state.telemt_runtime.summary().await;
     let admin_events = state.db.list_recent_admin_activities(4).await?;
-    let status_label = service_status_label(&summary.active_state, &summary.sub_state);
+    let status_label = if caps.shows_systemd_unit {
+        service_status_label(&summary.active_state, &summary.sub_state)
+    } else {
+        format!("{} · {}", summary.active_state, summary.sub_state)
+    };
 
     let mut lines = vec![
         "📊 Сводка состояния".to_string(),
         String::new(),
-        format!("Сервис: {}", state.service.service_name()),
+        format!("Сервис: {}", state.telemt_runtime.display_label()),
         format!("Статус: {}", status_label),
         format!(
-            "Проверка systemd: {}",
+            "{}: {}",
+            if caps.shows_systemd_unit {
+                "Проверка systemd"
+            } else {
+                "Host-runtime"
+            },
             if summary.success {
                 "OK"
             } else {
                 "Ошибка"
             }
         ),
-        format!(
+    ];
+    if caps.shows_systemd_unit {
+        lines.push(format!(
             "Unit: {} | PID: {}",
             summary.unit_file_state,
             summary
                 .main_pid
                 .map(|pid| pid.to_string())
                 .unwrap_or_else(|| "—".to_string())
-        ),
-    ];
+        ));
+    } else {
+        lines.push("Unit/PID: не применимо (runtime external/none)".to_string());
+    }
 
     if let Some(exec_status) = summary.exec_main_status {
         lines.push(format!("Код процесса: {}", exec_status));
@@ -805,7 +851,7 @@ pub async fn admin_show_service_panel_with_notice(
         chat_id,
         message_id,
         text,
-        crate::bot::keyboards::service_control_buttons(),
+        crate::bot::keyboards::service_control_buttons(&state.telemt_runtime.capabilities()),
     )
     .await
 }

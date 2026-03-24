@@ -1,36 +1,14 @@
-//! Управление systemd-сервисом telemt.
+//! Управление systemd-сервисом telemt (режим `runtime.mode = "systemd"`).
 
 use std::process::Output;
 #[cfg(unix)]
 use tokio::process::Command;
 
+use crate::runtime::{ServiceEvents, ServiceResult, ServiceSummary};
+
 #[derive(Debug, Clone)]
 pub struct ServiceController {
     service_name: String,
-}
-
-#[derive(Debug)]
-pub struct ServiceResult {
-    pub success: bool,
-    pub stderr: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ServiceSummary {
-    pub success: bool,
-    pub active_state: String,
-    pub sub_state: String,
-    pub unit_file_state: String,
-    pub main_pid: Option<i64>,
-    pub exec_main_status: Option<i64>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ServiceEvents {
-    pub success: bool,
-    pub lines: Vec<String>,
-    pub error: Option<String>,
 }
 
 impl ServiceController {
@@ -175,10 +153,6 @@ impl ServiceController {
 
     pub async fn restart(&self) -> ServiceResult {
         self.run_systemctl("restart").await
-    }
-
-    pub async fn reload(&self) -> ServiceResult {
-        self.notify_config_reloaded().await
     }
 
     pub async fn status(&self) -> ServiceResult {

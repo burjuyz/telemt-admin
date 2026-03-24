@@ -1,7 +1,7 @@
 use crate::bot::handlers::callback_data::UserLimitField;
 use crate::config::Config;
 use crate::db::Db;
-use crate::service::ServiceController;
+use crate::runtime::TelemtRuntime;
 use crate::telemt_backend::TelemtBackend;
 use std::sync::Arc;
 use teloxide::types::Message;
@@ -96,7 +96,7 @@ pub struct BotState {
     pub config: Arc<Config>,
     pub db: Arc<Db>,
     pub telemt_backend: TelemtBackend,
-    pub service: ServiceController,
+    pub telemt_runtime: TelemtRuntime,
     pub bot_username: Option<String>,
 }
 

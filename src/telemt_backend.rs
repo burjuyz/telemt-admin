@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::config::TelemtApiConfig;
 use crate::link::build_proxy_link;
-use crate::service::ServiceController;
+use crate::runtime::TelemtRuntime;
 use crate::telemt_cfg::TelemtConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,7 +159,7 @@ enum TelemtBackendInner {
 #[derive(Clone)]
 struct LegacyTelemtBackend {
     telemt_cfg: Arc<TelemtConfig>,
-    service: ServiceController,
+    telemt_runtime: TelemtRuntime,
 }
 
 struct ApiTelemtBackend {
@@ -192,12 +192,12 @@ impl TelemtBackend {
     pub fn new(
         api_cfg: &TelemtApiConfig,
         telemt_cfg: Arc<TelemtConfig>,
-        service: ServiceController,
+        telemt_runtime: TelemtRuntime,
     ) -> Result<Self, anyhow::Error> {
         if api_cfg.enabled {
             let legacy_fallback = api_cfg.allow_file_fallback.then(|| LegacyTelemtBackend {
                 telemt_cfg: telemt_cfg.clone(),
-                service: service.clone(),
+                telemt_runtime: telemt_runtime.clone(),
             });
             let timeout = Duration::from_millis(api_cfg.timeout_ms.max(1));
             let client = Client::builder()
@@ -228,7 +228,7 @@ impl TelemtBackend {
         Ok(Self {
             inner: Arc::new(TelemtBackendInner::Legacy(LegacyTelemtBackend {
                 telemt_cfg,
-                service,
+                telemt_runtime,
             })),
         })
     }
@@ -343,7 +343,7 @@ impl LegacyTelemtBackend {
         desired_secret: &str,
     ) -> Result<ProvisionedUser, anyhow::Error> {
         self.telemt_cfg.upsert_user(username, desired_secret)?;
-        let reload = self.service.notify_config_reloaded().await;
+        let reload = self.telemt_runtime.notify_config_reloaded().await;
         if !reload.success {
             tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
         }
@@ -359,7 +359,7 @@ impl LegacyTelemtBackend {
     async fn delete_user(&self, username: &str) -> Result<bool, anyhow::Error> {
         let removed = self.telemt_cfg.remove_user(username)?;
         if removed {
-            let reload = self.service.notify_config_reloaded().await;
+            let reload = self.telemt_runtime.notify_config_reloaded().await;
             if !reload.success {
                 tracing::warn!(stderr = %reload.stderr, "telemt config reload/restart had issues");
             }

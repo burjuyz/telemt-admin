@@ -3,9 +3,11 @@
 mod bot;
 mod cli;
 mod config;
+mod env_config_overlay;
 mod db;
 mod link;
 mod monitor;
+mod runtime;
 mod service;
 mod telemt_backend;
 mod telemt_cfg;
@@ -55,6 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         db_path = %config.db_path.display(),
         telemt_config_path = %config.telemt_config_path.display(),
         service_name = %config.service_name,
+        runtime_mode = %config.effective_runtime_mode().as_str(),
         users_page_size = config.users_page_size,
         "Configuration loaded"
     );
@@ -62,11 +65,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db =
         Arc::new(db::Db::open(&config.db_path, config.security.wizard_state_ttl_seconds).await?);
     let telemt_cfg = Arc::new(telemt_cfg::TelemtConfig::new(&config.telemt_config_path));
-    let service = service::ServiceController::new(&config.service_name);
+    let telemt_runtime = runtime::TelemtRuntime::new(
+        config.effective_runtime_mode(),
+        config.effective_systemd_unit(),
+        config.effective_external_label(),
+    );
     let telemt_backend = telemt_backend::TelemtBackend::new(
         &config.telemt_api,
         telemt_cfg.clone(),
-        service.clone(),
+        telemt_runtime.clone(),
     )?;
 
     let bot = Bot::new(token);
@@ -108,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config,
         db,
         telemt_backend,
-        service,
+        telemt_runtime,
         bot_username,
     };
     monitor::spawn_monitor(bot.clone(), state.clone());

@@ -13,6 +13,8 @@
 
 - `001-telemt-api-backend.md` — переход на модель `API-first + fallback` для интеграции с `telemt`.
 - `002-telemt-api-security-and-rollout.md` — security-границы control API и стратегия rollout.
+- `003-runtime-agnostic-deployment.md` — режимы `systemd` / `external` / `none` и Docker без unit внутри образа.
+- `004-config-sources-and-docker-defaults.md` — TOML как канон, whitelist `TELEMT_ADMIN__*`, пример конфига в образе без секретов в `ENV`.
 
 ## Когда обновлять ADR
 
@@ -22,6 +24,7 @@ ADR нужно обновлять или добавлять новый, если
 - меняется стратегия rollout или fallback;
 - меняется security-модель вокруг control API;
 - меняется источник истины для синхронизации пользователей и ссылок;
+- меняется модель развёртывания (systemd vs контейнер vs без unit);
 - решение нельзя адекватно объяснить только комментарием в коде или обычным разделом в `README`.
 
 ## Связанные документы

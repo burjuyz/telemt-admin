@@ -3,11 +3,11 @@ use crate::bot::handlers::state::BotState;
 
 pub async fn execute_service_action(state: &BotState, action: ServiceAction) -> String {
     let result = match action {
-        ServiceAction::Start => state.service.start().await,
-        ServiceAction::Stop => state.service.stop().await,
-        ServiceAction::Restart => state.service.restart().await,
-        ServiceAction::Reload => state.service.reload().await,
-        ServiceAction::Status => state.service.status().await,
+        ServiceAction::Start => state.telemt_runtime.start().await,
+        ServiceAction::Stop => state.telemt_runtime.stop().await,
+        ServiceAction::Restart => state.telemt_runtime.restart().await,
+        ServiceAction::Reload => state.telemt_runtime.reload().await,
+        ServiceAction::Status => state.telemt_runtime.status().await,
     };
 
     if result.success {

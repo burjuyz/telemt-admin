@@ -3,6 +3,8 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+use crate::runtime::RuntimeMode;
+
 /// Путь к конфигу по умолчанию.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/telemt-admin.toml";
 
@@ -33,6 +35,26 @@ pub struct Config {
     /// Настройки уведомлений и фонового мониторинга
     #[serde(default)]
     pub notifications: NotificationsConfig,
+    /// Режим управления процессом telemt на хосте (systemd / внешний supervisor / без unit)
+    #[serde(default)]
+    pub runtime: Option<RuntimeSection>,
+}
+
+/// Секция `[runtime]` в `telemt-admin.toml`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimeSection {
+    #[serde(default = "default_runtime_mode")]
+    pub mode: RuntimeMode,
+    /// Имя systemd unit для `mode = "systemd"` (если не задано — используется верхнеуровневый `service_name`)
+    #[serde(default)]
+    pub service_name: Option<String>,
+    /// Подпись для UI при `mode = "external"`
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+pub(crate) fn default_runtime_mode() -> RuntimeMode {
+    RuntimeMode::Systemd
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -182,8 +204,9 @@ impl Config {
         let content = std::fs::read_to_string(path).map_err(|e| {
             anyhow::anyhow!("Не удалось прочитать конфиг {}: {}", path.display(), e)
         })?;
-        let config: Config = toml::from_str(&content)
+        let mut config: Config = toml::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Ошибка парсинга конфига: {}", e))?;
+        let env_override_keys = crate::env_config_overlay::apply(&mut config)?;
         if let Some(ttl) = config.security.wizard_state_ttl_seconds
             && ttl <= 0
         {
@@ -201,6 +224,10 @@ impl Config {
             telemt_config_path = %config.telemt_config_path.display(),
             db_path = %config.db_path.display(),
             service_name = %config.service_name,
+            env_overrides_count = env_override_keys.len(),
+            env_override_keys = ?env_override_keys,
+            runtime_mode = %config.effective_runtime_mode().as_str(),
+            runtime_systemd_unit = %config.effective_systemd_unit(),
             users_page_size = config.users_page_size,
             telemt_api_enabled = config.telemt_api.enabled,
             telemt_api_base_url = %config.telemt_api.base_url,
@@ -226,11 +253,41 @@ impl Config {
             .clone()
             .or_else(|| std::env::var("TELOXIDE_TOKEN").ok())
             .ok_or_else(|| {
-                anyhow::anyhow!("Не задан bot_token в конфиге и TELOXIDE_TOKEN в окружении")
+                anyhow::anyhow!(
+                    "Не задан bot_token (в TOML, TELEMT_ADMIN__BOT_TOKEN или TELOXIDE_TOKEN)"
+                )
             })
     }
 
     pub fn is_admin(&self, user_id: i64) -> bool {
         self.admin_ids.contains(&user_id)
+    }
+
+    /// Режим runtime: при отсутствии `[runtime]` считается `systemd` (как раньше).
+    pub fn effective_runtime_mode(&self) -> RuntimeMode {
+        self.runtime
+            .as_ref()
+            .map(|r| r.mode)
+            .unwrap_or(RuntimeMode::Systemd)
+    }
+
+    /// Имя unit для `systemctl` при режиме systemd.
+    pub fn effective_systemd_unit(&self) -> String {
+        self.runtime
+            .as_ref()
+            .and_then(|r| r.service_name.as_ref())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| self.service_name.clone())
+    }
+
+    /// Метка для UI при `external`.
+    pub fn effective_external_label(&self) -> Option<String> {
+        self.runtime.as_ref().and_then(|r| {
+            r.label
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
     }
 }

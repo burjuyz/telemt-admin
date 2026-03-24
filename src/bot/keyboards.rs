@@ -1,6 +1,7 @@
 //! Inline-клавиатуры для экранов и wizard-сценариев.
 
 use crate::bot::handlers::callback_data::{CallbackAction, ServiceAction, UserLimitField};
+use crate::runtime::RuntimeCapabilities;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
 fn page_nav_row(
@@ -350,42 +351,56 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
         )])
 }
 
-pub fn service_control_buttons() -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback(
-                "🔄 Обновить",
-                CallbackAction::ShowServicePanel.encode(),
-            ),
-            InlineKeyboardButton::callback(
-                "📖 Reload",
-                CallbackAction::ExecuteServiceAction {
-                    action: ServiceAction::Reload,
-                }
-                .encode(),
-            ),
-        ],
-        vec![InlineKeyboardButton::callback(
-            "📈 Top пользователей",
-            CallbackAction::ShowConnectionsSummary.encode(),
-        )],
-        vec![
-            InlineKeyboardButton::callback(
+pub fn service_control_buttons(caps: &RuntimeCapabilities) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    let mut row_refresh = vec![InlineKeyboardButton::callback(
+        "🔄 Обновить",
+        CallbackAction::ShowServicePanel.encode(),
+    )];
+    if caps.can_reload_config {
+        row_refresh.push(InlineKeyboardButton::callback(
+            "📖 Reload",
+            CallbackAction::ExecuteServiceAction {
+                action: ServiceAction::Reload,
+            }
+            .encode(),
+        ));
+    }
+    rows.push(row_refresh);
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "📈 Top пользователей",
+        CallbackAction::ShowConnectionsSummary.encode(),
+    )]);
+
+    if caps.can_restart || caps.can_stop {
+        let mut row_risky = Vec::new();
+        if caps.can_restart {
+            row_risky.push(InlineKeyboardButton::callback(
                 "🔄 Перезапустить",
                 CallbackAction::ConfirmServiceAction {
                     action: ServiceAction::Restart,
                 }
                 .encode(),
-            ),
-            InlineKeyboardButton::callback(
+            ));
+        }
+        if caps.can_stop {
+            row_risky.push(InlineKeyboardButton::callback(
                 "⏹ Остановить",
                 CallbackAction::ConfirmServiceAction {
                     action: ServiceAction::Stop,
                 }
                 .encode(),
-            ),
-        ],
-        vec![
+            ));
+        }
+        if !row_risky.is_empty() {
+            rows.push(row_risky);
+        }
+    }
+
+    if caps.can_start {
+        rows.push(vec![
             InlineKeyboardButton::callback(
                 "▶️ Запустить",
                 CallbackAction::ExecuteServiceAction {
@@ -394,8 +409,15 @@ pub fn service_control_buttons() -> InlineKeyboardMarkup {
                 .encode(),
             ),
             InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
-        ],
-    ])
+        ]);
+    } else {
+        rows.push(vec![InlineKeyboardButton::callback(
+            "🏠 Главная",
+            CallbackAction::ShowAdminHome.encode(),
+        )]);
+    }
+
+    InlineKeyboardMarkup::new(rows)
 }
 
 pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
