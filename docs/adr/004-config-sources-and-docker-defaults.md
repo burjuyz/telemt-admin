@@ -37,6 +37,7 @@
 Поддерживаются (суффикс после префикса `TELEMT_ADMIN__`):
 
 - `BOT_TOKEN`
+- `BOT_USERNAME` (username бота без `@`, если `getMe` недоступен)
 - `ADMIN_IDS` (список через запятую)
 - `TELEMT_CONFIG_PATH`
 - `DB_PATH`

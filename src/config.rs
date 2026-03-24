@@ -12,6 +12,9 @@ pub const DEFAULT_CONFIG_PATH: &str = "/etc/telemt-admin.toml";
 pub struct Config {
     /// Токен Telegram бота (или через TELOXIDE_TOKEN)
     pub bot_token: Option<String>,
+    /// Username бота без ведущего @ (для ссылок `t.me/...` и deep link), если `getMe` недоступен
+    #[serde(default)]
+    pub bot_username: Option<String>,
     /// Список Telegram user_id администраторов
     pub admin_ids: Vec<i64>,
     /// Путь к конфигу telemt (по умолчанию /etc/telemt.toml)
@@ -198,6 +201,15 @@ fn default_notify_on_new_request() -> bool {
     true
 }
 
+fn normalize_bot_username_input(s: &str) -> Option<String> {
+    let t = s.trim().trim_start_matches('@');
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
 impl Config {
     pub fn load(path: &std::path::Path) -> Result<Self, anyhow::Error> {
         tracing::debug!("Loading config from {}", path.display());
@@ -221,6 +233,7 @@ impl Config {
         }
         tracing::info!(
             admin_count = config.admin_ids.len(),
+            bot_username = ?config.configured_bot_username(),
             telemt_config_path = %config.telemt_config_path.display(),
             db_path = %config.db_path.display(),
             service_name = %config.service_name,
@@ -261,6 +274,21 @@ impl Config {
 
     pub fn is_admin(&self, user_id: i64) -> bool {
         self.admin_ids.contains(&user_id)
+    }
+
+    /// Явный username из TOML/env после нормализации (без `@`, без пробелов).
+    pub fn configured_bot_username(&self) -> Option<String> {
+        self.bot_username
+            .as_ref()
+            .and_then(|s| normalize_bot_username_input(s))
+    }
+
+    /// Username для ссылок и разбора команд: приоритет у конфигурации, иначе результат `getMe`.
+    pub fn resolved_bot_username(&self, from_get_me: Option<String>) -> Option<String> {
+        if let Some(u) = self.configured_bot_username() {
+            return Some(u);
+        }
+        from_get_me.and_then(|s| normalize_bot_username_input(&s))
     }
 
     /// Режим runtime: при отсутствии `[runtime]` считается `systemd` (как раньше).

@@ -175,7 +175,9 @@ pub async fn handle_token_create_from_text(
             format!("Ссылка: {}\n", invite_link)
         })
         .unwrap_or_else(|| {
-            "Ссылка: недоступна (у бота не задан username в Telegram).\n".to_string()
+            "Ссылка: недоступна (username бота неизвестен). Укажите `bot_username` в конфиге \
+             или `TELEMT_ADMIN__BOT_USERNAME`, если до api.telegram.org нет доступа для getMe.\n"
+                .to_string()
         });
 
     let response = format!(
@@ -184,8 +186,7 @@ pub async fn handle_token_create_from_text(
          {}\
          Режим: {}\n\
          Действует до: {}\n\
-         Лимит использований: {}\n\
-         Для отзыва откройте `/token` -> список токенов -> карточку токена.",
+         Лимит использований: {}\n",
         token.token,
         link_line,
         format_mode(token.auto_approve),

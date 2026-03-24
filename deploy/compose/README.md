@@ -14,7 +14,7 @@ sudo chown 65534:65534 data
 
 После этого:
 
-1. Заполните `.env` секретами и, при необходимости, зафиксируйте версию образа в `TELEMT_ADMIN_IMAGE`.
+1. Заполните `.env` секретами и, при необходимости, зафиксируйте версию образа в `TELEMT_ADMIN_IMAGE`. Если из контейнера недоступен `api.telegram.org`, задайте `TELEMT_ADMIN__BOT_USERNAME` (username без `@`).
 2. Отредактируйте `config/telemt-admin.toml`. Внутри контейнера он будет смонтирован как `/etc/telemt-admin/telemt-admin.toml`.
 3. Проверьте, что `telemt_api.base_url` доступен из сети контейнера `telemt-admin`.
 

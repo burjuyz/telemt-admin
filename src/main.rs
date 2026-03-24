@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )?;
 
     let bot = Bot::new(token);
-    let bot_username = match bot.get_me().await {
+    let from_get_me = match bot.get_me().await {
         Ok(me) => me.user.username.clone(),
         Err(error) => {
             tracing::warn!(
@@ -87,6 +87,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             None
         }
     };
+    let bot_username = config.resolved_bot_username(from_get_me);
+    if let Some(ref u) = bot_username {
+        if config.configured_bot_username().is_some() {
+            tracing::info!(
+                bot_username = %u,
+                "Используется bot_username из конфигурации (приоритет над getMe)"
+            );
+        } else {
+            tracing::info!(bot_username = %u, "Используется username бота из getMe");
+        }
+    } else {
+        tracing::warn!(
+            "username бота неизвестен: задайте bot_username в TOML или TELEMT_ADMIN__BOT_USERNAME, \
+             иначе ссылки на токены и deep link недоступны"
+        );
+    }
 
     if let Err(error) = bot
         .set_my_commands(bot::handlers::public_telegram_commands())

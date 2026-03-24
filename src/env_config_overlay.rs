@@ -16,6 +16,11 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__BOT_TOKEN".to_string());
     }
 
+    if let Some(v) = read_nonempty("BOT_USERNAME") {
+        config.bot_username = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_USERNAME".to_string());
+    }
+
     if let Some(v) = read_nonempty("ADMIN_IDS") {
         config.admin_ids = parse_admin_ids(&v)?;
         applied.push("TELEMT_ADMIN__ADMIN_IDS".to_string());

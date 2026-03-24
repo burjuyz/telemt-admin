@@ -35,7 +35,7 @@
 - Linux x86_64 (glibc) с `systemd`;
 - bootstrap-установка через `scripts/install.sh`.
 
-Дополнительно поддерживается развёртывание без привязки к unit на хосте (Docker и т.п.): секция `[runtime]`, режим `external`, опора на control API; см. `docs/adr/003-runtime-agnostic-deployment.md`. Для Docker допустимы точечные overrides через whitelist `TELEMT_ADMIN__*` (см. `docs/adr/004-config-sources-and-docker-defaults.md`).
+Дополнительно поддерживается развёртывание без привязки к unit на хосте (Docker и т.п.): секция `[runtime]`, режим `external`, опора на control API; см. `docs/adr/003-runtime-agnostic-deployment.md`. Для Docker допустимы точечные overrides через whitelist `TELEMT_ADMIN__*` (см. `docs/adr/004-config-sources-and-docker-defaults.md`). Если до Telegram Bot API нет исходящего доступа, username для ссылок на токены задаётся явно (`bot_username` в TOML или `TELEMT_ADMIN__BOT_USERNAME`).
 
 Ключевые инварианты:
 

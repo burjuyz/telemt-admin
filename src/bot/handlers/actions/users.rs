@@ -383,8 +383,12 @@ pub async fn send_user_start_link(
     tg_user_id: i64,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(bot_username) = state.bot_username.as_deref() else {
-        bot.send_message(chat_id, "Не удалось определить username бота.")
-            .await?;
+        bot.send_message(
+            chat_id,
+            "Не удалось определить username бота. Укажите `bot_username` в конфиге \
+             или `TELEMT_ADMIN__BOT_USERNAME`, если getMe к Telegram недоступен.",
+        )
+        .await?;
         return Ok(());
     };
     let link = build_bot_start_link(bot_username, &format!("admin:user:{tg_user_id}"));
@@ -406,8 +410,12 @@ pub async fn send_token_start_link(
     token_id: i64,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(bot_username) = state.bot_username.as_deref() else {
-        bot.send_message(chat_id, "Не удалось определить username бота.")
-            .await?;
+        bot.send_message(
+            chat_id,
+            "Не удалось определить username бота. Укажите `bot_username` в конфиге \
+             или `TELEMT_ADMIN__BOT_USERNAME`, если getMe к Telegram недоступен.",
+        )
+        .await?;
         return Ok(());
     };
     let link = build_bot_start_link(bot_username, &format!("admin:token:{token_id}"));
