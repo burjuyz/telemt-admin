@@ -512,7 +512,7 @@ pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
                 CallbackAction::OpenTokenCard { token_id, page }.encode(),
             ),
             InlineKeyboardButton::callback(
-                "🪄 Deep link",
+                "🔗 Ссылка",
                 CallbackAction::SendTokenStartLink { token_id }.encode(),
             ),
         ],

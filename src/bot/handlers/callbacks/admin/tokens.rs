@@ -99,7 +99,7 @@ pub async fn handle(
             let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);
             };
-            ack_callback(bot, q.id.clone(), Some("Отправляю deep link"), false).await?;
+            ack_callback(bot, q.id.clone(), Some("Отправляю ссылку"), false).await?;
             send_token_start_link(bot, chat_id, state, token_id).await?;
             Ok(true)
         }

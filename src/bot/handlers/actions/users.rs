@@ -380,7 +380,7 @@ pub async fn send_user_start_link(
         .await?;
         return Ok(());
     };
-    let link = build_bot_start_link(bot_username, &format!("admin:user:{tg_user_id}"));
+    let link = build_bot_start_link(bot_username, &format!("admin-user-{tg_user_id}"));
     bot.send_message(
         chat_id,
         format!(
@@ -407,12 +407,19 @@ pub async fn send_token_start_link(
         .await?;
         return Ok(());
     };
-    let link = build_bot_start_link(bot_username, &format!("admin:token:{token_id}"));
+
+    let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? else {
+        bot.send_message(chat_id, "Токен не найден или уже недоступен.")
+            .await?;
+        return Ok(());
+    };
+
+    let link = build_bot_start_link(bot_username, &token.token);
     bot.send_message(
         chat_id,
         format!(
-            "Deep link для карточки токена:\n{}\n\nОткроется карточка токена после /start.",
-            link
+            "Ссылка для пользователя:\n{}\n\nЧто делать дальше:\n1. Отправьте эту ссылку пользователю.\n2. Пользователь откроет бота по ссылке.\n3. После /start бот подхватит invite-токен и продолжит сценарий подключения.",
+            link,
         ),
     )
     .await?;
