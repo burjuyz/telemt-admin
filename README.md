@@ -367,7 +367,10 @@ sudo systemctl enable --now telemt-admin.service
 - runtime snapshot по control API;
 - сводка нагрузки (`uptime`, total/bad connections, handshake timeouts);
 - live connections (`total`, `ME`, `Direct`, active users);
+- sync-health по SQLite (`degraded`, `control_api`, `legacy`, top sync error codes);
 - отдельный экран `📈 Top пользователей` по соединениям и трафику.
+
+`/service` и экран top users теперь рассчитаны на частичную деградацию control API: при падении отдельного endpoint бот не скрывает весь экран, а показывает локальные данные и причину ошибки именно в проблемном блоке.
 
 Deep links для администраторов поддерживают не только invite-token payload, но и быстрый переход к:
 
@@ -570,4 +573,7 @@ docker compose logs --tail=100 telemt-admin
 
 ## CI/CD
 
-Проект использует GitHub Actions для автоматической проверки кода (`clippy`, `check`), сборки релизов под Linux и Windows и публикации Docker-образа в GHCR при создании тега версии (`vX.Y.Z`).
+Проект использует GitHub Actions для автоматической проверки кода и публикации релизов.
+
+- основной CI на `push`/`pull_request` запускает `cargo check --locked` и `cargo clippy --all-targets -- -D warnings`;
+- release workflow по тегу `vX.Y.Z` собирает артефакты под Linux и Windows, публикует Docker-образ в GHCR и формирует release notes через `git-cliff`.

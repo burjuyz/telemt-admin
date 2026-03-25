@@ -12,14 +12,18 @@
 - `src/db/invite_tokens.rs` — invite-токены, consume/revoke и проверки активного токена.
 - `src/db/admin.rs` — агрегаты админки и структурированные события активности.
 - `src/db/wizard_state.rs` — хранение wizard-state и TTL cleanup.
-- `src/telemt_cfg.rs` — legacy-адаптер для чтения и изменения `telemt.toml`.
-- `src/telemt_backend.rs` — единый backend-слой для работы с `telemt`: control API first, file/systemd fallback, live user info, stats и runtime snapshots.
+- `src/telemt_cfg.rs` — legacy-адаптер для чтения и изменения `telemt.toml`; блокирующий файловый I/O должен выполняться через offload, а не напрямую в async bot flow.
+- `src/telemt_backend.rs` — публичный фасад backend-слоя `telemt`, который сохраняет единый API для остального кода.
+- `src/telemt_backend/api_client.rs` и `src/telemt_backend/api_dto.rs` — HTTP-клиент control API, revision/retry и приватные DTO ответов.
+- `src/telemt_backend/control_api.rs`, `src/telemt_backend/legacy.rs`, `src/telemt_backend/mappers.rs`, `src/telemt_backend/types.rs` — реализация API-first backend, legacy fallback, чистые мапперы и публичные типы backend-слоя.
 - `src/runtime/` — универсальный слой управления процессом telemt (`TelemtRuntime`: systemd / external / none) и capability-модель для UI.
 - `src/service.rs` — реализация вызовов `systemctl` и `journalctl` для режима `systemd`.
 - `src/link.rs` — генерация секрета и `tg://proxy`-ссылки.
 - `src/bot/handlers.rs` — сборка схемы обработчиков.
 - `src/bot/handlers/commands/mod.rs` — slash-команды как точки входа в основные разделы и сценарии бота.
 - `src/bot/handlers/callbacks/mod.rs` — inline callbacks и wizard-навигация.
+- `src/bot/handlers/actions/service.rs` — orchestration для service panel, connections summary и service actions до передачи данных в presentation.
+- `src/bot/handlers/actions/users.rs` — orchestration пользовательской карточки, lookup-сценариев и изменения live-лимитов.
 - `src/bot/handlers/menu.rs` — текстовый ввод для активного wizard-state.
 - `src/bot/keyboards.rs` — inline-клавиатуры.
 
@@ -39,6 +43,7 @@
 - `/start` остаётся универсальной точкой входа: обычный user flow, invite-token deep link и admin deep link на конкретный экран/сущность.
 - Источником истины для wizard-state должна оставаться SQLite, чтобы сценарии корректно восстанавливались после рестарта и TTL применялся единообразно.
 - Блокирующие системные команды не должны выполняться напрямую в async Telegram flow.
+- Блокирующий файловый I/O (`telemt.toml`, self-update unpack/copy/rename) не должен выполняться напрямую в async Telegram flow; для этого используется явный offload через `spawn_blocking`.
 - Фоновый мониторинг не должен дублировать UI-логику: он получает только структурированные snapshots и решает, слать ли уведомление.
 
 Границы слоёв:
@@ -46,7 +51,8 @@
 - `src/db/*.rs` возвращают данные и доменные состояния, а не готовую разметку экранов.
 - `src/bot/handlers/screens.rs` и `src/bot/keyboards.rs` отвечают за presentation.
 - orchestration уровня “БД + telemt backend + Telegram-ответ” лучше держать в action/use-case функциях, а не размазывать по callback/router-коду.
-- `telemt_backend` должен оставаться единой точкой выбора между control API и legacy file/systemd path; жизненный цикл unit на хосте инкапсулируется в `runtime`, а не в handlers.
+- service panel, connections summary и user card должны загружать данные через `actions/*`, а не собирать их напрямую внутри `screens`.
+- `telemt_backend` должен оставаться единой внешней точкой выбора между control API и legacy file/systemd path; детали HTTP-клиента, DTO и mapping должны жить во внутренних подмодулях backend-слоя, а не утекать в handlers.
 - `monitor` использует только `BotState` и структурированные ответы `telemt_backend`; он не должен напрямую читать БД-схему `telemt` или строить UI-экраны.
 
 Новые runtime-возможности:

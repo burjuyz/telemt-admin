@@ -18,7 +18,7 @@
 - управление существующими пользователями (поиск, карточка, удаление) и их лимитами;
 - управление invite-токенами;
 - управление `systemd`-сервисом `telemt` и наблюдение за control API;
-- live runtime-диагностика и top users по соединениям/трафику;
+- live runtime-диагностика, sync-health и top users по соединениям/трафику;
 - фоновые уведомления о health/runtime проблемах.
 
 Технологический стек:
@@ -32,15 +32,17 @@
 
 Целевой production-deploy для текущего MVP:
 
-- Linux x86_64 (glibc) с `systemd`;
-- bootstrap-установка через `scripts/install.sh`.
+- Docker-образ для Linux x86_64 (glibc);
+- типовой запуск через Docker Compose / иной container runtime в режиме `[runtime] = external`;
+- bootstrap-установка через `scripts/install.sh` и хостовый `systemd` остаётся поддерживаемым fallback-сценарием.
 
-Дополнительно поддерживается развёртывание без привязки к unit на хосте (Docker и т.п.): секция `[runtime]`, режим `external`, опора на control API; см. `docs/adr/003-runtime-agnostic-deployment.md`. Для Docker допустимы точечные overrides через whitelist `TELEMT_ADMIN__*` (см. `docs/adr/004-config-sources-and-docker-defaults.md`). Если до Telegram Bot API нет исходящего доступа, username для ссылок на токены задаётся явно (`bot_username` в TOML или `TELEMT_ADMIN__BOT_USERNAME`).
+Контейнерный production-сценарий опирается на секцию `[runtime]`, режим `external` и control API; см. `docs/adr/003-runtime-agnostic-deployment.md`. Для Docker допустимы точечные overrides через whitelist `TELEMT_ADMIN__*` (см. `docs/adr/004-config-sources-and-docker-defaults.md`). Если до Telegram Bot API нет исходящего доступа, username для ссылок на токены задаётся явно (`bot_username` в TOML или `TELEMT_ADMIN__BOT_USERNAME`).
 
 Ключевые инварианты:
 
 - пользователь `telemt` маппится как `tg_<telegram_user_id>`;
 - при включённом control API операции CRUD над пользователями должны идти через API; legacy-запись в `telemt.toml` используется как fallback;
+- `/service` и monitoring-path должны честно показывать частичную деградацию control API по секциям, а не маскировать её общим «нет данных»;
 - `telemt` поддерживает hot reload конфига, поэтому legacy-путь всё ещё может использовать `HUP/restart`, но это больше не основной механизм синхронизации;
 - invite-токены учитывают срок действия, `is_active` и `max_usage`;
 - критичные переходы состояний регистрации и consume invite-токена должны оставаться атомарными и не затирать конкурентные изменения;
@@ -48,6 +50,7 @@
 - если администратор запрашивает `/link` без существующей учётной записи, доступ создаётся автоматически;
 - `/start` может использоваться не только для invite-токена, но и для admin deep links на карточки и экраны;
 - уведомления и polling-поведение определяются секцией `[notifications]` в `telemt-admin.toml`.
+- блокирующий файловый I/O (`telemt.toml`, self-update unpack/copy/rename) должен быть вынесен из async executor через явный offload.
 
 Документация решений:
 

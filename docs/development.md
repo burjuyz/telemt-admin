@@ -17,6 +17,7 @@ CI/CD:
 
 - `.github/workflows/ci.yml` проверяет `cargo check --locked` и `cargo clippy --all-targets -- -D warnings`;
 - `.github/workflows/release.yml` собирает релизы для Linux и Windows по тегам `v*.*.*` и публикует Docker-образ в GHCR (`ghcr.io/<owner>/telemt-admin`);
+- release workflow не дублирует `clippy`, а предполагает, что релизный тег создаётся поверх кода, уже прошедшего основной CI;
 - changelog формируется через `git-cliff` и Conventional Commits.
 - `scripts/install.sh` ориентирован на Linux x86_64 (glibc) + `systemd` и скачивает release-артефакты из GitHub.
 - контейнерная сборка: корневой `Dockerfile`, пример `deploy/compose/docker-compose.telemt-admin.example.yml`;
@@ -33,6 +34,7 @@ CI/CD:
 - если меняется эксплуатационное поведение control API, синхронно обновлять `docs/runbook.md`;
 - если меняются notifications, health/runtime alerts или фоновый polling, синхронно обновлять `README.md`, `docs/overview.md`, `docs/architecture.md` и `docs/runbook.md`;
 - при изменениях bot UX проверять вручную wizard-flow, основные inline-экраны и восстановление wizard-state после рестарта.
+- если меняются `telemt_cfg`, legacy fallback или self-update, синхронно проверять, что блокирующий файловый I/O остаётся вынесенным из async executor и что ограничения по atomic write/offload отражены в docs.
 
 Навигация по документации:
 

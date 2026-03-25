@@ -116,9 +116,36 @@ Fallback не должен быть скрытым operationally:
 ## Значение sync-полей в SQLite
 
 - `backend_mode` — какой backend последним успешно применял изменения;
-- `last_sync_error` — последнее известное описание проблемы синхронизации;
+- `last_sync_error` — последний стабильный код деградации или ошибки синхронизации;
 - `last_seen_revision` — последняя revision, полученная от control API;
 - `last_synced_at` — время последней фиксации sync-состояния.
+
+Семантика записи:
+
+- `backend_mode = control_api` означает, что последнее успешное изменение было применено через control API без ухода на legacy-путь;
+- `backend_mode = legacy_file` означает, что последнее успешное изменение было применено через локальный `telemt.toml`/legacy-path;
+- `last_seen_revision` заполняется только если сценарий действительно завершился через control API и revision была получена;
+- `last_sync_error = NULL` означает, что последнее изменение завершилось без известной деградации, которую нужно подсветить оператору;
+- `last_sync_error` не заменяет логи: это короткий стабильный operational code для UI и диагностики.
+
+## Стабильные sync error codes
+
+На текущем этапе проект использует и резервирует следующие коды:
+
+- `degraded_legacy_fallback` — операция должна была идти через control API, но была успешно применена через legacy fallback;
+- `user_not_found_in_backend` — локальная запись есть, но удаление/сверка не нашли пользователя в backend;
+- `degraded_link_fallback` — резерв под сценарии, где данные пользователя получены, но ссылку пришлось строить локально;
+- `api_error_timeout` — резерв под явную фиксацию timeout от control API;
+- `api_error_auth` — резерв под ошибки авторизации control API;
+- `api_error_revision_conflict` — резерв под конфликты revision/`If-Match`;
+- `api_error_not_found` — резерв под сценарии not found на control API.
+
+Текущая policy:
+
+- approve и auto-approve очищают `last_sync_error`, если provisioning завершился по чистому API-path;
+- approve и auto-approve пишут `degraded_legacy_fallback`, если проект был в режиме `API-first`, но provisioning фактически ушёл в legacy fallback;
+- hard ban пишет `user_not_found_in_backend`, если локальный approved-пользователь уже не найден в backend на этапе удаления;
+- hard ban пишет `degraded_legacy_fallback`, если delete должен был завершиться через control API, но фактически был выполнен через legacy fallback.
 
 ## Фоновый мониторинг и уведомления
 
@@ -141,6 +168,23 @@ Operational note:
 - если на staging/production уведомления слишком шумные, сначала уменьшайте scope через флаги `notify_on_*`, а не выключайте весь `[telemt_api]`;
 - при `notifications.enabled = false` бот остаётся полностью рабочим, но перестаёт слать push-уведомления и health/runtime alerts.
 
+## Частичная деградация control API
+
+Экран `/service` не должен считаться бинарным индикатором «всё работает / всё сломано».
+
+- systemd/host-runtime, локальная БД, sync-агрегаты и события админа могут отображаться даже если часть control API endpoints недоступна;
+- блок `Демон (control API)` зависит от runtime snapshot;
+- блок `Нагрузка` зависит от `stats_summary`;
+- строки `Live` и экран `Top пользователей` зависят от `connections_summary`;
+- если конкретный endpoint недоступен, UI показывает причину ошибки именно в соответствующем блоке, а не скрывает весь экран.
+
+Что проверять оператору:
+
+- если отсутствует только блок `Демон (control API)` — проверить `/v1/health`, `/v1/system/info`, `/v1/runtime/*`, auth header и whitelist;
+- если падает только `Нагрузка` или `Top пользователей` — проверить runtime endpoints `/v1/stats/summary` и `/v1/runtime/connections/summary`;
+- если в `/service` виден рост `Sync: degraded` или появляются `Sync ошибки`, смотреть коды `last_sync_error` и correlate их с логами fallback/API;
+- если Telegram-уведомления приходят, а `/service` показывает частичную деградацию, это ожидаемо: монитор планирует сигналы отдельно от рендеринга UI и не требует полной доступности всех endpoints.
+
 ## Когда нужен restart `telemt`
 
 Restart обязателен, если менялись параметры `[server.api]`, включая:
@@ -157,6 +201,10 @@ Restart обязателен, если менялись параметры `[ser
 - `POST /v1/users/{username}/rotate-secret` в текущем `telemt` не использовать;
 - `/metrics` не заменяет control API;
 - наличие fallback не должно оправдывать публичную экспозицию control API без auth.
+- при `DELETE /v1/users/{username}` ответ `404` трактуется как `user_not_found_in_backend` и не инициирует legacy delete-path автоматически; это защищает от лишнего удаления, но оставляет возможный residual risk для старых legacy-only записей.
+- fallback-запись `telemt.toml` старается быть атомарной через temp-file + rename, но при `PermissionDenied` на создание temp-файла переходит на прямую запись в целевой файл; это осознанный reliability-компромисс для окружений вроде `/etc`.
+- `Mutex` внутри `TelemtConfig` сериализует доступ только внутри одного процесса `telemt-admin`; внешние редакторы файла и параллельные писатели вне процесса остаются вне модели.
+- self-update выполняет распаковку и замену бинарника в отдельном blocking-контуре, но не предоставляет полноценный application-level rollback при сбое замены.
 
 ## Откат
 

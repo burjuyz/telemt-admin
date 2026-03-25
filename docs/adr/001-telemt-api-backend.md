@@ -29,6 +29,8 @@
 
 В проекте вводится единый backend-слой `src/telemt_backend.rs` с режимом `API-first`.
 
+Публичный фасад backend-слоя сохраняется в `src/telemt_backend.rs`, а внутренняя реализация может быть разнесена по подмодулям (`api_client`, DTO, legacy fallback, mapping), если это уменьшает связность без изменения внешнего контракта.
+
 Он инкапсулирует выбор между:
 
 - control API `telemt`;
@@ -69,5 +71,5 @@ Telegram handlers и action-слой не должны обращаться на
 ## Отложенные решения
 
 - отказ от legacy fallback после стабилизации production rollout;
-- возможное дробление `telemt_backend` на отдельные `api_client` и `backend` модули;
+- дальнейшее упрощение backend-слоя после стабилизации rollout, если появятся новые поддомены (`metrics`, reconciliation, sync-state policy);
 - использование `PATCH` и `rotate-secret` после исправления серверной стороны в `telemt`.
