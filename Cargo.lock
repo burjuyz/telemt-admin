@@ -2624,7 +2624,7 @@ dependencies = [
 
 [[package]]
 name = "telemt-admin"
-version = "0.2.0-rc0"
+version = "0.2.0-rc1"
 dependencies = [
  "anyhow",
  "chrono",
