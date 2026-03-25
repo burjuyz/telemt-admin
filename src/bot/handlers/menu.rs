@@ -1,7 +1,6 @@
 use super::actions::{
-    apply_user_limit_from_input, create_user_from_input, handle_token_create_from_text,
-    open_token_from_lookup_input, open_user_from_lookup_input, process_invite_token,
-    prompt_delete_confirmation,
+    apply_user_limit_from_input, handle_token_create_from_text, open_token_from_lookup_input,
+    open_user_from_lookup_input, process_invite_token, prompt_delete_confirmation,
 };
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
@@ -45,12 +44,6 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                 text.trim(),
             )
             .await?;
-        }
-        Some(WizardState::AdminCreateAwaitingTarget) => {
-            let created = create_user_from_input(&bot, msg.chat.id, &state, text.trim()).await?;
-            if created {
-                clear_wizard_state(&state, user_id).await?;
-            }
         }
         Some(WizardState::AdminDeleteAwaitingTarget) => {
             let prompted =

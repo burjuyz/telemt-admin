@@ -9,7 +9,6 @@ use teloxide::types::Message;
 #[derive(Clone, Debug)]
 pub enum WizardState {
     AwaitingInviteToken,
-    AdminCreateAwaitingTarget,
     AdminDeleteAwaitingTarget,
     AdminFindUserAwaitingTarget { page: i64 },
     AdminSetUserLimitAwaitingValue {
@@ -25,7 +24,6 @@ impl WizardState {
     fn encode(&self) -> String {
         match self {
             Self::AwaitingInviteToken => "awaiting_invite_token".to_string(),
-            Self::AdminCreateAwaitingTarget => "admin_create_awaiting_target".to_string(),
             Self::AdminDeleteAwaitingTarget => "admin_delete_awaiting_target".to_string(),
             Self::AdminFindUserAwaitingTarget { page } => {
                 format!("admin_find_user:{}", (*page).max(1))
@@ -55,7 +53,6 @@ impl WizardState {
     fn decode(value: &str) -> Option<Self> {
         match value {
             "awaiting_invite_token" => Some(Self::AwaitingInviteToken),
-            "admin_create_awaiting_target" => Some(Self::AdminCreateAwaitingTarget),
             "admin_delete_awaiting_target" => Some(Self::AdminDeleteAwaitingTarget),
             "admin_token_create:auto" => {
                 Some(Self::AdminTokenCreateAwaitingParams { auto_approve: true })

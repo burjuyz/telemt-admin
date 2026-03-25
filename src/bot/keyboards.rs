@@ -273,10 +273,10 @@ pub fn users_page_keyboard(
         CallbackAction::ShowUsersPage { page },
         CallbackAction::PromptUserLookup { page },
     ));
-    rows.push(vec![
-        InlineKeyboardButton::callback("➕ Создать", CallbackAction::PromptCreateUser.encode()),
-        InlineKeyboardButton::callback("⛔ Удалить", CallbackAction::PromptDeleteUser.encode()),
-    ]);
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⛔ Удалить",
+        CallbackAction::PromptDeleteUser.encode(),
+    )]);
     rows.push(vec![InlineKeyboardButton::callback(
         "🏠 Главная",
         CallbackAction::ShowAdminHome.encode(),

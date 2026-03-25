@@ -1,10 +1,9 @@
-use super::access::approve_user_direct_and_build_link;
 use crate::bot::handlers::callback_data::UserLimitField;
 use crate::bot::handlers::format::user_display_name;
-use crate::bot::keyboards::user_lookup_candidates_keyboard;
 use crate::bot::handlers::shared::build_bot_start_link;
+use crate::bot::keyboards::user_lookup_candidates_keyboard;
 use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card};
-use crate::bot::handlers::state::{BotState, telemt_username};
+use crate::bot::handlers::state::BotState;
 use crate::db::RegistrationRequest;
 use chrono::{Duration, NaiveDate, Utc};
 use teloxide::payloads::SendMessageSetters;
@@ -72,50 +71,6 @@ async fn resolve_active_user_candidates(
                 .await
         }
     }
-}
-
-pub async fn create_user_from_input(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    arg: &str,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    let candidates = resolve_active_user_candidates(state, arg).await?;
-
-    if candidates.is_empty() {
-        bot.send_message(
-            chat_id,
-            "Пользователь не найден в базе.\n\
-             Он должен хотя бы раз отправить боту /start.\n\
-             Укажите Telegram ID, @username или часть имени/ника.",
-        )
-        .await?;
-        return Ok(false);
-    }
-
-    if candidates.len() > 1 {
-        bot.send_message(
-            chat_id,
-            format!(
-                "Найдено несколько пользователей ({}). Уточните запрос: точный @username или Telegram ID.",
-                candidates.len()
-            ),
-        )
-        .await?;
-        return Ok(false);
-    }
-
-    let tg_user_id = candidates[0].tg_user_id;
-    tracing::info!(tg_user_id = tg_user_id, "Admin create user");
-    let telemt_user = telemt_username(tg_user_id);
-    let link = approve_user_direct_and_build_link(state, tg_user_id, None, None).await?;
-
-    bot.send_message(
-        chat_id,
-        format!("Пользователь {} создан.\nСсылка:\n{}", telemt_user, link),
-    )
-    .await?;
-    Ok(true)
 }
 
 pub async fn prompt_delete_confirmation(

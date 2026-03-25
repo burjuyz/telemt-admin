@@ -78,7 +78,6 @@ pub async fn start_wizard_from_callback(
         CallbackAction::PromptTokenCreate { auto_approve } => {
             WizardState::AdminTokenCreateAwaitingParams { auto_approve }
         }
-        CallbackAction::PromptCreateUser => WizardState::AdminCreateAwaitingTarget,
         CallbackAction::PromptDeleteUser => WizardState::AdminDeleteAwaitingTarget,
         _ => {
             return Err(anyhow::anyhow!(

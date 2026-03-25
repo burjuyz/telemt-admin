@@ -119,18 +119,6 @@ pub async fn handle(
             }
             Ok(true)
         }
-        CallbackAction::PromptCreateUser => {
-            start_wizard_from_callback(
-                bot,
-                q,
-                state,
-                CallbackAction::PromptCreateUser,
-                "Жду ID или @username",
-                "Отправьте Telegram ID или точный @username следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.".to_string(),
-            )
-            .await?;
-            Ok(true)
-        }
         CallbackAction::PromptDeleteUser => {
             let Some(admin_id) = require_admin_callback(bot, q, state).await? else {
                 return Ok(true);

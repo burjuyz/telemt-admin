@@ -97,7 +97,6 @@ pub enum CallbackAction {
     SendTokenStartLink { token_id: i64 },
     ConfirmTokenRevoke { token_id: i64, page: i64 },
     ExecuteTokenRevoke { token_id: i64, page: i64 },
-    PromptCreateUser,
     PromptDeleteUser,
     ExecuteDeleteUser { tg_user_id: i64 },
     ApproveRequest { request_id: i64, page: i64 },
@@ -168,7 +167,6 @@ impl CallbackAction {
             Self::ExecuteTokenRevoke { token_id, page } => {
                 format!("v1|admin|token|revoke|execute|{token_id}|{page}")
             }
-            Self::PromptCreateUser => "v1|admin|create".to_string(),
             Self::PromptDeleteUser => "v1|admin|delete".to_string(),
             Self::ExecuteDeleteUser { tg_user_id } => {
                 format!("v1|admin|delete|execute|{tg_user_id}")
@@ -280,7 +278,6 @@ impl CallbackAction {
                     page: parse_i64(page)?.max(1),
                 })
             }
-            ["v1", "admin", "create"] => Some(Self::PromptCreateUser),
             ["v1", "admin", "delete"] => Some(Self::PromptDeleteUser),
             ["v1", "admin", "delete", "execute", tg_user_id] => Some(Self::ExecuteDeleteUser {
                 tg_user_id: parse_i64(tg_user_id)?,
