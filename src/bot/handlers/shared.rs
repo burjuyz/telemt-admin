@@ -27,6 +27,50 @@ pub enum StartPayload {
     AdminScreen(AdminStartScreen),
 }
 
+fn parse_admin_start_payload(payload: &str) -> Option<StartPayload> {
+    if let Some(value) = payload.strip_prefix("user:") {
+        return value.trim().parse::<i64>().ok().map(StartPayload::AdminUser);
+    }
+    if let Some(value) = payload.strip_prefix("token:") {
+        return value.trim().parse::<i64>().ok().map(StartPayload::AdminToken);
+    }
+    if let Some(value) = payload.strip_prefix("screen:") {
+        let screen = match value.trim() {
+            "home" => AdminStartScreen::Home,
+            "users" => AdminStartScreen::Users,
+            "tokens" => AdminStartScreen::Tokens,
+            "service" => AdminStartScreen::Service,
+            "stats" => AdminStartScreen::Stats,
+            "pending" => AdminStartScreen::Pending,
+            "connections" => AdminStartScreen::Connections,
+            _ => return None,
+        };
+        return Some(StartPayload::AdminScreen(screen));
+    }
+
+    if let Some(value) = payload.strip_prefix("user-") {
+        return value.trim().parse::<i64>().ok().map(StartPayload::AdminUser);
+    }
+    if let Some(value) = payload.strip_prefix("token-") {
+        return value.trim().parse::<i64>().ok().map(StartPayload::AdminToken);
+    }
+    if let Some(value) = payload.strip_prefix("screen-") {
+        let screen = match value.trim() {
+            "home" => AdminStartScreen::Home,
+            "users" => AdminStartScreen::Users,
+            "tokens" => AdminStartScreen::Tokens,
+            "service" => AdminStartScreen::Service,
+            "stats" => AdminStartScreen::Stats,
+            "pending" => AdminStartScreen::Pending,
+            "connections" => AdminStartScreen::Connections,
+            _ => return None,
+        };
+        return Some(StartPayload::AdminScreen(screen));
+    }
+
+    None
+}
+
 pub fn parse_start_payload(text: &str) -> Option<StartPayload> {
     let mut parts = text.split_whitespace();
     let command = parts.next()?;
@@ -51,30 +95,16 @@ pub fn parse_start_payload(text: &str) -> Option<StartPayload> {
         return Some(StartPayload::InviteToken(token.trim().to_string()));
     }
 
-    if let Some(payload) = normalized.strip_prefix("admin:") {
-        let mut parts = payload.split(':');
-        match (parts.next(), parts.next()) {
-            (Some("user"), Some(value)) => {
-                return value.parse::<i64>().ok().map(StartPayload::AdminUser);
-            }
-            (Some("token"), Some(value)) => {
-                return value.parse::<i64>().ok().map(StartPayload::AdminToken);
-            }
-            (Some("screen"), Some(value)) => {
-                let screen = match value {
-                    "home" => AdminStartScreen::Home,
-                    "users" => AdminStartScreen::Users,
-                    "tokens" => AdminStartScreen::Tokens,
-                    "service" => AdminStartScreen::Service,
-                    "stats" => AdminStartScreen::Stats,
-                    "pending" => AdminStartScreen::Pending,
-                    "connections" => AdminStartScreen::Connections,
-                    _ => return None,
-                };
-                return Some(StartPayload::AdminScreen(screen));
-            }
-            _ => {}
-        }
+    if let Some(payload) = normalized.strip_prefix("admin:")
+        && let Some(payload) = parse_admin_start_payload(payload)
+    {
+        return Some(payload);
+    }
+
+    if let Some(payload) = normalized.strip_prefix("admin-")
+        && let Some(payload) = parse_admin_start_payload(payload)
+    {
+        return Some(payload);
     }
 
     Some(StartPayload::InviteToken(normalized.to_string()))
