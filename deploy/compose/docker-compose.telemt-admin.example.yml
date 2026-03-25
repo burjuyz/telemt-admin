@@ -11,7 +11,7 @@
 
 services:
   telemt-admin:
-    image: ${TELEMT_ADMIN_IMAGE:-ghcr.io/fgbm/telemt-admin:latest}
+    image: ghcr.io/fgbm/telemt-admin:${TELEMT_ADMIN_VERSION:-latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -19,5 +19,5 @@ services:
       - ./config/telemt-admin.toml:/etc/telemt-admin/telemt-admin.toml:ro
       - ./data:/var/lib/telemt-admin
     environment:
-      RUST_LOG: info
-      # Секреты и точечные overrides храните в .env (см. README / ADR 004).
+      TELEMT_ADMIN__RUNTIME__MODE: external
+      TELEMT_ADMIN__RUNTIME__LABEL: docker

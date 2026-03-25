@@ -33,14 +33,12 @@ apt-get update
 apt-get install -y --no-install-recommends ca-certificates
 rm -rf /var/lib/apt/lists/*
 install -d -m 0755 /etc/telemt-admin
-install -d -m 0755 -o 65534 -g 65534 /var/lib/telemt-admin
+install -d -m 0755 /var/lib/telemt-admin
 EOF
 COPY --from=builder /app/target/release/telemt-admin /usr/local/bin/telemt-admin
 COPY deploy/docker/telemt-admin.docker.toml.example /usr/share/doc/telemt-admin/docker-default.toml.example
-# Operational defaults только; секреты и app-конфиг не запекаются в ENV.
+
 ENV RUST_LOG=info
 VOLUME ["/etc/telemt-admin", "/var/lib/telemt-admin"]
-# nobody в Debian: uid 65534
-USER nobody
 ENTRYPOINT ["/usr/local/bin/telemt-admin"]
 CMD ["--config", "/etc/telemt-admin/telemt-admin.toml"]

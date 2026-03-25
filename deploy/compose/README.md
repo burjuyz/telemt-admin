@@ -5,28 +5,24 @@
 ```bash
 mkdir -p telemt-admin-docker/config telemt-admin-docker/data
 cd telemt-admin-docker
-curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/compose/docker-compose.telemt-admin.example.yml
-curl -fsSLo .env.example https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/compose/.env.example
-curl -fsSLo config/telemt-admin.toml https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/docker/telemt-admin.docker.toml.example
+curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/compose/docker-compose.telemt-admin.example.yml
+curl -fsSLo .env.example https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/compose/.env.example
+curl -fsSLo config/telemt-admin.toml https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/docker/telemt-admin.docker.toml.example
 cp .env.example .env
-sudo chown 65534:65534 data
 ```
 
 После этого:
 
-1. Заполните `.env` секретами и, при необходимости, зафиксируйте версию образа в `TELEMT_ADMIN_IMAGE`. Если из контейнера недоступен `api.telegram.org`, задайте `TELEMT_ADMIN__BOT_USERNAME` (username без `@`).
-2. Отредактируйте `config/telemt-admin.toml`. Внутри контейнера он будет смонтирован как `/etc/telemt-admin/telemt-admin.toml`.
-3. Проверьте, что `telemt_api.base_url` доступен из сети контейнера `telemt-admin`.
+1. Отредактируйте `config/telemt-admin.toml`: `bot_token`, `admin_ids`, при необходимости `telemt_api.auth_header` и `base_url`. При необходимости задайте в `.env` `TELEMT_ADMIN_VERSION` (по умолчанию в образ уходит тег `latest`). Если из контейнера недоступен `api.telegram.org`, задайте `TELEMT_ADMIN__BOT_USERNAME` (username без `@`).
+2. Внутри контейнера конфиг монтируется как `/etc/telemt-admin/telemt-admin.toml`.
+3. Режим `external` и метка `docker` для UI задаются в `docker-compose.yml` (`TELEMT_ADMIN__RUNTIME__MODE`, `TELEMT_ADMIN__RUNTIME__LABEL`), переопределять в TOML не требуется.
+4. Уровень логов — переменная `RUST_LOG` в `.env` (например `info` или `debug` для отладки).
 
 Минимальный пример `config/telemt-admin.toml`:
 
 ```toml
-# bot_token можно не указывать, если задать TELEMT_ADMIN__BOT_TOKEN или TELOXIDE_TOKEN в .env
+bot_token = "ВАШ_ТОКЕН_БОТА"
 admin_ids = [123456789]
-
-[runtime]
-mode = "external"
-label = "docker"
 
 db_path = "/var/lib/telemt-admin/state.db"
 telemt_config_path = "/etc/telemt.toml"
@@ -47,6 +43,8 @@ docker compose pull
 docker compose up -d
 docker compose logs -f telemt-admin
 ```
+
+Если контейнер постоянно перезапускается, смотрите логи командой выше. Частые причины: не задан `bot_token`, неверный тег в `TELEMT_ADMIN_VERSION`, недоступен Telegram API из сети контейнера.
 
 Обновление:
 

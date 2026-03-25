@@ -64,7 +64,7 @@
 Запуск:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fgbm/telemt-admin/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/fgbm/telemt-admin/master/scripts/install.sh | sudo bash
 ```
 
 Во время установки скрипт спросит только минимально необходимые значения:
@@ -117,18 +117,17 @@ announce = "X.X.X.X"
 ```bash
 mkdir -p telemt-admin-docker/config telemt-admin-docker/data
 cd telemt-admin-docker
-curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/compose/docker-compose.telemt-admin.example.yml
-curl -fsSLo .env.example https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/compose/.env.example
-curl -fsSLo config/telemt-admin.toml https://raw.githubusercontent.com/fgbm/telemt-admin/main/deploy/docker/telemt-admin.docker.toml.example
+curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/compose/docker-compose.telemt-admin.example.yml
+curl -fsSLo .env.example https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/compose/.env.example
+curl -fsSLo config/telemt-admin.toml https://raw.githubusercontent.com/fgbm/telemt-admin/master/deploy/docker/telemt-admin.docker.toml.example
 cp .env.example .env
-sudo chown 65534:65534 data
 ```
 
 Дальше:
 
-1. Заполните `.env` секретами: как минимум `TELEMT_ADMIN__BOT_TOKEN` и `TELEMT_ADMIN__TELEMT_API__AUTH_HEADER`. Если из контейнера недоступен `api.telegram.org`, добавьте `TELEMT_ADMIN__BOT_USERNAME` (username без `@`), иначе ссылки на токены и deep link не соберутся.
-2. Отредактируйте `config/telemt-admin.toml`: укажите `admin_ids` и доступный из контейнера `telemt_api.base_url`.
-3. Убедитесь, что для контейнерного сценария выбран `[runtime] mode = "external"` (или `none`) и `allow_file_fallback = false`, если вы не монтируете `telemt.toml`.
+1. Укажите в `config/telemt-admin.toml` как минимум `bot_token` и `admin_ids`, при необходимости — `telemt_api.auth_header` для control API. При необходимости задайте `TELEMT_ADMIN_VERSION` в `.env` (по умолчанию `latest`). Если из контейнера недоступен `api.telegram.org`, добавьте в `.env` `TELEMT_ADMIN__BOT_USERNAME` (username без `@`), иначе ссылки на токены и deep link не соберутся.
+2. Отредактируйте при необходимости `telemt_api.base_url` так, чтобы URL был достижим из сети контейнера.
+3. Режим `external` и метка для UI задаются в `docker-compose.yml` через `TELEMT_ADMIN__RUNTIME__MODE` / `TELEMT_ADMIN__RUNTIME__LABEL`. Держите `allow_file_fallback = false`, если не монтируете `telemt.toml`.
 4. Запустите стек:
 
 ```bash
@@ -140,11 +139,8 @@ docker compose logs -f telemt-admin
 Минимальный профиль `config/telemt-admin.toml` для Docker:
 
 ```toml
+bot_token = "ВАШ_ТОКЕН_БОТА"
 admin_ids = [123456789]
-
-[runtime]
-mode = "external"
-label = "docker"
 
 db_path = "/var/lib/telemt-admin/state.db"
 telemt_config_path = "/etc/telemt.toml"
@@ -509,7 +505,7 @@ docker compose up -d
 docker compose logs --tail=100 telemt-admin
 ```
 
-Если вы хотите обновляться не на `latest`, а на фиксированную версию, поменяйте `TELEMT_ADMIN_IMAGE` в `.env`, например на `ghcr.io/fgbm/telemt-admin:0.1.15`, и затем снова выполните `docker compose pull && docker compose up -d`.
+Если вы хотите обновляться не на `latest`, а на фиксированную версию, задайте в `.env`, например, `TELEMT_ADMIN_VERSION=0.1.15`, и затем снова выполните `docker compose pull && docker compose up -d`.
 
 ## Docker
 
@@ -517,11 +513,11 @@ docker compose logs --tail=100 telemt-admin
 
 При создании GitHub-тега версии `vX.Y.Z` workflow релиза публикует образ в `ghcr.io/<owner>/telemt-admin` с тегами `X.Y.Z`, `X.Y`, `X`, `sha-<commit>` и `latest`.
 
-В образе поставляется пример конфигурации без секретов: **`/usr/share/doc/telemt-admin/docker-default.toml.example`** (исходник: [`deploy/docker/telemt-admin.docker.toml.example`](deploy/docker/telemt-admin.docker.toml.example)). Его можно сохранить как `config/telemt-admin.toml` в compose-директории или взять за основу иным способом. Docker-образ по умолчанию ожидает рабочий конфиг по пути **`/etc/telemt-admin/telemt-admin.toml`** и объявляет тома **`/etc/telemt-admin`** и **`/var/lib/telemt-admin`**.
+В образе поставляется пример конфигурации без секретов: **`/usr/share/doc/telemt-admin/docker-default.toml.example`** (исходник: [`deploy/docker/telemt-admin.docker.toml.example`](deploy/docker/telemt-admin.docker.toml.example)). Его можно сохранить как `config/telemt-admin.toml` в compose-директории или взять за основу иным способом. Docker-образ по умолчанию ожидает рабочий конфиг по пути **`/etc/telemt-admin/telemt-admin.toml`** и объявляет тома **`/etc/telemt-admin`** и **`/var/lib/telemt-admin`**. Процесс в контейнере запускается от **root**, чтобы не ловить рассинхрон uid/gid на смонтированном каталоге данных; граница безопасности — изоляция контейнера и политика хоста.
 
 Рекомендуемый профиль для контейнера:
 
-- `[runtime] mode = "external"` (или `none`);
+- режим `external` (в примере Compose задаётся через `TELEMT_ADMIN__RUNTIME__MODE`);
 - `[telemt_api] enabled = true` и `base_url` на доступный с сети контейнера control API telemt;
 - `allow_file_fallback = false`, если нет смонтированного `telemt.toml` и systemd;
 - bind mount или том на `db_path` для SQLite;
