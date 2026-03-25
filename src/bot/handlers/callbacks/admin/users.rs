@@ -1,11 +1,12 @@
 use super::super::common::{ack_callback, admin_callback_target, start_wizard_from_callback};
 use super::AdminActionResult;
 use crate::bot::handlers::actions::{
-    has_active_users, perform_hard_ban, send_user_start_link, user_limit_input_help,
+    has_active_users, perform_hard_ban, send_user_start_link, show_user_card,
+    user_limit_input_help,
 };
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    admin_show_users_page, send_user_qr_to_admin, show_user_ban_confirm, show_user_card,
+    admin_show_users_page, send_user_qr_to_admin, show_user_ban_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
 use crate::bot::handlers::state::{BotState, clear_wizard_state};

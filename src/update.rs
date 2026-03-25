@@ -5,6 +5,7 @@ use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 const GITHUB_OWNER: &str = "fgbm";
 const GITHUB_REPO: &str = "telemt-admin";
@@ -204,8 +205,31 @@ pub async fn run_self_update() -> Result<()> {
         .await
         .context("Чтение тела ответа")?;
 
-    if let Some(ref digest_str) = asset.digest {
-        if let Some(expected) = parse_digest(digest_str) {
+    let archive_bytes = archive_bytes.to_vec();
+    let archive_bytes = if let Some(ref digest_str) = asset.digest {
+        verify_download_digest(archive_bytes, digest_str.clone()).await?
+    } else {
+        eprintln!("Предупреждение: digest не указан в релизе, проверка SHA-256 пропущена.");
+        archive_bytes
+    };
+
+    install_downloaded_release(
+        exe_dir.to_path_buf(),
+        current_exe.clone(),
+        archive_bytes,
+    )
+    .await?;
+
+    println!(
+        "Обновление до версии {} завершено. Перезапустите сервис: systemctl restart telemt-admin.service",
+        latest
+    );
+    Ok(())
+}
+
+async fn verify_download_digest(archive_bytes: Vec<u8>, digest: String) -> Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || {
+        if let Some(expected) = parse_digest(&digest) {
             let mut hasher = Sha256::new();
             hasher.update(&archive_bytes);
             let actual: [u8; 32] = hasher.finalize().into();
@@ -215,11 +239,30 @@ pub async fn run_self_update() -> Result<()> {
                 );
             }
         }
-    } else {
-        eprintln!("Предупреждение: digest не указан в релизе, проверка SHA-256 пропущена.");
-    }
+        Ok(archive_bytes)
+    })
+    .await
+    .context("Blocking SHA-256 verification task failed")?
+}
 
-    let mut archive = flate2::read::GzDecoder::new(archive_bytes.as_ref());
+async fn install_downloaded_release(
+    exe_dir: PathBuf,
+    current_exe: PathBuf,
+    archive_bytes: Vec<u8>,
+) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        install_downloaded_release_blocking(&exe_dir, &current_exe, &archive_bytes)
+    })
+    .await
+    .context("Blocking self-update task failed")?
+}
+
+fn install_downloaded_release_blocking(
+    exe_dir: &Path,
+    current_exe: &Path,
+    archive_bytes: &[u8],
+) -> Result<()> {
+    let mut archive = flate2::read::GzDecoder::new(archive_bytes);
     let mut tar = tar::Archive::new(&mut archive);
     let temp_dir = tempfile::tempdir_in(exe_dir)
         .context("Не удалось создать временную директорию (проверьте права на запись)")?;
@@ -241,13 +284,9 @@ pub async fn run_self_update() -> Result<()> {
         fs::set_permissions(&new_binary_path, perms)?;
     }
 
-    fs::rename(&new_binary_path, &current_exe).context(
+    fs::rename(&new_binary_path, current_exe).context(
         "Не удалось заменить бинарник. Убедитесь, что у процесса есть права на запись в директорию с исполняемым файлом.",
     )?;
 
-    println!(
-        "Обновление до версии {} завершено. Перезапустите сервис: systemctl restart telemt-admin.service",
-        latest
-    );
     Ok(())
 }

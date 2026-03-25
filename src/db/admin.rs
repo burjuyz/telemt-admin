@@ -1,6 +1,6 @@
 use crate::db::{
     ACTIVE_INVITE_TOKEN_PREDICATE, AdminActivity, AdminActivityKind, AdminStats, Db,
-    current_unix_timestamp,
+    SyncErrorStat, SyncHealthSummary, current_unix_timestamp,
 };
 
 impl Db {
@@ -145,5 +145,52 @@ impl Db {
                 Ok(AdminActivity { timestamp, kind })
             })
             .collect()
+    }
+
+    pub async fn sync_health_summary(
+        &self,
+        top_limit: i64,
+    ) -> Result<SyncHealthSummary, anyhow::Error> {
+        let degraded_users = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM registration_requests WHERE last_sync_error IS NOT NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let approved_via_control_api = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM registration_requests
+             WHERE status = 'approved' AND backend_mode = 'control_api'",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let approved_via_legacy = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM registration_requests
+             WHERE status = 'approved' AND backend_mode = 'legacy_file'",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let top_sync_errors = sqlx::query_as::<_, (String, i64)>(
+            "SELECT last_sync_error, COUNT(*) AS affected
+             FROM registration_requests
+             WHERE last_sync_error IS NOT NULL
+             GROUP BY last_sync_error
+             ORDER BY affected DESC, last_sync_error ASC
+             LIMIT ?",
+        )
+        .bind(top_limit.clamp(1, 10))
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|(code, affected_users)| SyncErrorStat {
+            code,
+            affected_users,
+        })
+        .collect();
+
+        Ok(SyncHealthSummary {
+            degraded_users,
+            approved_via_control_api,
+            approved_via_legacy,
+            top_sync_errors,
+        })
     }
 }

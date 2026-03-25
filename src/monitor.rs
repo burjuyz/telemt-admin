@@ -14,6 +14,11 @@ struct MonitorState {
     timeskew_state: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct MonitorNotification {
+    text: String,
+}
+
 pub fn spawn_monitor(bot: Bot, state: BotState) {
     if !state.config.notifications.enabled || !state.config.telemt_api.enabled {
         tracing::info!("Фоновый монитор telemt отключён конфигом");
@@ -46,23 +51,34 @@ async fn poll_once(
 ) -> Result<(), anyhow::Error> {
     match state.telemt_backend.monitor_snapshot().await {
         Ok(Some(snapshot)) => {
+            tracing::debug!(
+                health_status = %snapshot.health_status,
+                accepting_new_connections = ?snapshot.accepting_new_connections,
+                me_runtime_ready = ?snapshot.me_runtime_ready,
+                upstream_unhealthy_total = ?snapshot.upstream_unhealthy_total,
+                me_selftest_kdf_state = ?snapshot.me_selftest_kdf_state,
+                me_selftest_timeskew_state = ?snapshot.me_selftest_timeskew_state,
+                "Снимок monitor telemt обновлён"
+            );
             handle_snapshot(bot, state, monitor_state, snapshot).await?;
         }
         Ok(None) => {
             tracing::debug!("monitor_snapshot недоступен для текущего backend");
         }
         Err(error) => {
-            if state.config.notifications.notify_on_health_change
-                && monitor_state.api_available != Some(false)
-            {
-                notify_admins(
-                    bot,
-                    state,
-                    format!("🚨 telemt control API недоступен\n\nПричина: {}", error),
-                )
-                .await;
-            }
+            tracing::warn!(
+                error = %error,
+                api_available = false,
+                previous_api_available = ?monitor_state.api_available,
+                "Не удалось получить monitor snapshot telemt"
+            );
+            let notifications = plan_error_notifications(
+                monitor_state,
+                state.config.notifications.notify_on_health_change,
+                &error.to_string(),
+            );
             monitor_state.api_available = Some(false);
+            deliver_notifications(bot, state, notifications).await;
         }
     }
     Ok(())
@@ -74,120 +90,153 @@ async fn handle_snapshot(
     monitor_state: &mut MonitorState,
     snapshot: TelemtMonitorSnapshot,
 ) -> Result<(), anyhow::Error> {
-    if monitor_state.api_available == Some(false) && state.config.notifications.notify_on_health_change
-    {
-        notify_admins(bot, state, "✅ telemt control API снова доступен".to_string()).await;
-    }
-    monitor_state.api_available = Some(true);
+    let notifications = plan_snapshot_notifications(
+        monitor_state,
+        &snapshot,
+        state.config.notifications.notify_on_health_change,
+        state.config.notifications.notify_on_runtime_alerts,
+    );
+    apply_snapshot_state(monitor_state, snapshot);
+    deliver_notifications(bot, state, notifications).await;
+    Ok(())
+}
 
-    if state.config.notifications.notify_on_health_change {
+fn plan_error_notifications(
+    monitor_state: &MonitorState,
+    notify_on_health_change: bool,
+    error: &str,
+) -> Vec<MonitorNotification> {
+    if notify_on_health_change && monitor_state.api_available != Some(false) {
+        return vec![MonitorNotification {
+            text: format!("🚨 telemt control API недоступен\n\nПричина: {}", error),
+        }];
+    }
+    Vec::new()
+}
+
+fn plan_snapshot_notifications(
+    monitor_state: &MonitorState,
+    snapshot: &TelemtMonitorSnapshot,
+    notify_on_health_change: bool,
+    notify_on_runtime_alerts: bool,
+) -> Vec<MonitorNotification> {
+    let mut notifications = Vec::new();
+
+    if monitor_state.api_available == Some(false) && notify_on_health_change {
+        notifications.push(MonitorNotification {
+            text: "✅ telemt control API снова доступен".to_string(),
+        });
+    }
+
+    if notify_on_health_change {
         if monitor_state.health_status.as_deref() != Some(snapshot.health_status.as_str())
             && let Some(previous) = monitor_state.health_status.as_deref()
         {
-            notify_admins(
-                bot,
-                state,
-                format!(
+            notifications.push(MonitorNotification {
+                text: format!(
                     "ℹ️ telemt health изменился\n\nБыло: {}\nСтало: {}",
                     previous, snapshot.health_status
                 ),
-            )
-            .await;
+            });
         }
         if monitor_state.accepting_new_connections == Some(true)
             && snapshot.accepting_new_connections == Some(false)
         {
-            notify_admins(
-                bot,
-                state,
-                "🚨 telemt перестал принимать новые соединения".to_string(),
-            )
-            .await;
+            notifications.push(MonitorNotification {
+                text: "🚨 telemt перестал принимать новые соединения".to_string(),
+            });
         } else if monitor_state.accepting_new_connections == Some(false)
             && snapshot.accepting_new_connections == Some(true)
         {
-            notify_admins(
-                bot,
-                state,
-                "✅ telemt снова принимает новые соединения".to_string(),
-            )
-            .await;
+            notifications.push(MonitorNotification {
+                text: "✅ telemt снова принимает новые соединения".to_string(),
+            });
         }
         if monitor_state.me_runtime_ready == Some(true) && snapshot.me_runtime_ready == Some(false) {
-            notify_admins(bot, state, "🚨 ME runtime больше не готов".to_string()).await;
+            notifications.push(MonitorNotification {
+                text: "🚨 ME runtime больше не готов".to_string(),
+            });
         } else if monitor_state.me_runtime_ready == Some(false)
             && snapshot.me_runtime_ready == Some(true)
         {
-            notify_admins(bot, state, "✅ ME runtime снова готов".to_string()).await;
+            notifications.push(MonitorNotification {
+                text: "✅ ME runtime снова готов".to_string(),
+            });
         }
     }
 
-    if state.config.notifications.notify_on_runtime_alerts {
+    if notify_on_runtime_alerts {
         let prev_upstream_bad = monitor_state.upstream_unhealthy_total.unwrap_or(0);
         let current_upstream_bad = snapshot.upstream_unhealthy_total.unwrap_or(0);
         if prev_upstream_bad == 0 && current_upstream_bad > 0 {
-            notify_admins(
-                bot,
-                state,
-                format!(
+            notifications.push(MonitorNotification {
+                text: format!(
                     "🚨 В telemt появились unhealthy upstream\n\nКоличество: {}",
                     current_upstream_bad
                 ),
-            )
-            .await;
+            });
         } else if prev_upstream_bad > 0 && current_upstream_bad == 0 {
-            notify_admins(bot, state, "✅ Все upstream снова healthy".to_string()).await;
+            notifications.push(MonitorNotification {
+                text: "✅ Все upstream снова healthy".to_string(),
+            });
         }
 
-        notify_state_recovery(
-            bot,
-            state,
+        notifications.extend(plan_state_recovery(
             monitor_state.kdf_state.as_deref(),
             snapshot.me_selftest_kdf_state.as_deref(),
             "ME self-test KDF",
-        )
-        .await;
-        notify_state_recovery(
-            bot,
-            state,
+        ));
+        notifications.extend(plan_state_recovery(
             monitor_state.timeskew_state.as_deref(),
             snapshot.me_selftest_timeskew_state.as_deref(),
             "ME self-test time skew",
-        )
-        .await;
+        ));
     }
 
+    notifications
+}
+
+fn plan_state_recovery(
+    previous: Option<&str>,
+    current: Option<&str>,
+    title: &str,
+) -> Vec<MonitorNotification> {
+    let prev_bad = previous.is_some_and(|value| value != "ok");
+    let curr_bad = current.is_some_and(|value| value != "ok");
+    if !prev_bad && curr_bad {
+        return vec![MonitorNotification {
+            text: format!(
+                "🚨 {} сообщает о проблеме\n\nТекущее состояние: {}",
+                title,
+                current.unwrap_or("unknown")
+            ),
+        }];
+    }
+    if prev_bad && !curr_bad {
+        return vec![MonitorNotification {
+            text: format!("✅ {} снова в состоянии ok", title),
+        }];
+    }
+    Vec::new()
+}
+
+fn apply_snapshot_state(monitor_state: &mut MonitorState, snapshot: TelemtMonitorSnapshot) {
+    monitor_state.api_available = Some(true);
     monitor_state.health_status = Some(snapshot.health_status);
     monitor_state.accepting_new_connections = snapshot.accepting_new_connections;
     monitor_state.me_runtime_ready = snapshot.me_runtime_ready;
     monitor_state.upstream_unhealthy_total = snapshot.upstream_unhealthy_total;
     monitor_state.kdf_state = snapshot.me_selftest_kdf_state;
     monitor_state.timeskew_state = snapshot.me_selftest_timeskew_state;
-    Ok(())
 }
 
-async fn notify_state_recovery(
+async fn deliver_notifications(
     bot: &Bot,
     state: &BotState,
-    previous: Option<&str>,
-    current: Option<&str>,
-    title: &str,
+    notifications: Vec<MonitorNotification>,
 ) {
-    let prev_bad = previous.is_some_and(|value| value != "ok");
-    let curr_bad = current.is_some_and(|value| value != "ok");
-    if !prev_bad && curr_bad {
-        notify_admins(
-            bot,
-            state,
-            format!(
-                "🚨 {} сообщает о проблеме\n\nТекущее состояние: {}",
-                title,
-                current.unwrap_or("unknown")
-            ),
-        )
-        .await;
-    } else if prev_bad && !curr_bad {
-        notify_admins(bot, state, format!("✅ {} снова в состоянии ok", title)).await;
+    for notification in notifications {
+        notify_admins(bot, state, notification.text).await;
     }
 }
 

@@ -2,11 +2,87 @@ use crate::bot::handlers::format::format_timestamp;
 use crate::bot::handlers::shared::HandlerResult;
 use crate::bot::handlers::state::{BotState, clear_wizard_state, telemt_username};
 use crate::db::{
-    ConsumedInviteToken, RegisterResult, RegistrationRequest, TokenConsumeError, TokenMode,
+    ConsumedInviteToken, Db, RegisterResult, RegistrationRequest, TokenConsumeError, TokenMode,
 };
 use crate::link::generate_user_secret;
+use crate::telemt_backend::{DeleteUserResult, ProvisionedUser, TelemtBackendMode};
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Message, Requester};
+
+const SYNC_ERROR_USER_NOT_FOUND_IN_BACKEND: &str = "user_not_found_in_backend";
+const SYNC_ERROR_DEGRADED_LEGACY_FALLBACK: &str = "degraded_legacy_fallback";
+
+#[derive(Debug, Clone)]
+struct SyncStateUpdate {
+    backend_mode: String,
+    last_seen_revision: Option<String>,
+    last_sync_error: Option<&'static str>,
+}
+
+impl SyncStateUpdate {
+    fn new(
+        backend_mode: TelemtBackendMode,
+        last_seen_revision: Option<String>,
+        last_sync_error: Option<&'static str>,
+    ) -> Self {
+        Self {
+            backend_mode: backend_mode.as_str().to_string(),
+            last_seen_revision,
+            last_sync_error,
+        }
+    }
+
+    async fn persist(&self, db: &Db, tg_user_id: i64) -> Result<(), anyhow::Error> {
+        db.mark_sync_state(
+            tg_user_id,
+            &self.backend_mode,
+            self.last_seen_revision.as_deref(),
+            self.last_sync_error,
+        )
+        .await
+    }
+}
+
+fn sync_state_for_provision(
+    configured_mode: TelemtBackendMode,
+    provisioned: &ProvisionedUser,
+) -> SyncStateUpdate {
+    let last_sync_error =
+        if configured_mode == TelemtBackendMode::ControlApi
+            && provisioned.mode == TelemtBackendMode::LegacyFile
+        {
+            Some(SYNC_ERROR_DEGRADED_LEGACY_FALLBACK)
+        } else {
+            None
+        };
+
+    SyncStateUpdate::new(
+        provisioned.mode,
+        provisioned.revision.clone(),
+        last_sync_error,
+    )
+}
+
+fn sync_state_for_delete(
+    configured_mode: TelemtBackendMode,
+    delete_result: &DeleteUserResult,
+) -> SyncStateUpdate {
+    let last_sync_error = if !delete_result.removed {
+        Some(SYNC_ERROR_USER_NOT_FOUND_IN_BACKEND)
+    } else if configured_mode == TelemtBackendMode::ControlApi
+        && delete_result.mode == TelemtBackendMode::LegacyFile
+    {
+        Some(SYNC_ERROR_DEGRADED_LEGACY_FALLBACK)
+    } else {
+        None
+    };
+
+    SyncStateUpdate::new(
+        delete_result.mode,
+        delete_result.revision.clone(),
+        last_sync_error,
+    )
+}
 
 async fn notify_auto_approve(
     bot: &Bot,
@@ -121,14 +197,8 @@ pub async fn approve_request_and_build_link(
     {
         return Ok(None);
     }
-    state
-        .db
-        .mark_sync_state(
-            request.tg_user_id,
-            provisioned.mode.as_str(),
-            provisioned.revision.as_deref(),
-            None,
-        )
+    sync_state_for_provision(state.telemt_backend.mode(), &provisioned)
+        .persist(&state.db, request.tg_user_id)
         .await?;
     let proxy_link = if let Some(link) = provisioned.link {
         link
@@ -163,14 +233,8 @@ pub async fn approve_user_direct_and_build_link(
             &provisioned.secret,
         )
         .await?;
-    state
-        .db
-        .mark_sync_state(
-            tg_user_id,
-            provisioned.mode.as_str(),
-            provisioned.revision.as_deref(),
-            None,
-        )
+    sync_state_for_provision(state.telemt_backend.mode(), &provisioned)
+        .persist(&state.db, tg_user_id)
         .await?;
     if let Some(link) = provisioned.link {
         Ok(link)
@@ -342,24 +406,13 @@ pub async fn send_user_link(
 
 pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
-    let removed_from_cfg = state.telemt_backend.delete_user(&telemt_user).await?;
+    let delete_result = state.telemt_backend.delete_user(&telemt_user).await?;
     let removed_from_db = state.db.deactivate_user(tg_user_id).await?;
-    let sync_error = if removed_from_cfg {
-        None
-    } else {
-        Some("user_not_found_in_backend")
-    };
-    state
-        .db
-        .mark_sync_state(
-            tg_user_id,
-            state.telemt_backend.mode().as_str(),
-            None,
-            sync_error,
-        )
+    sync_state_for_delete(state.telemt_backend.mode(), &delete_result)
+        .persist(&state.db, tg_user_id)
         .await?;
 
-    if removed_from_cfg || removed_from_db {
+    if delete_result.removed || removed_from_db {
         Ok(format!("Пользователь {} удалён", telemt_user))
     } else {
         Ok(format!("Пользователь {} не найден", telemt_user))

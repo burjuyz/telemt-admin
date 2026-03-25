@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use toml_edit::{DocumentMut, Item, Table};
 
 /// Параметры для генерации ссылки (host, port, tls_domain).
@@ -92,6 +92,15 @@ impl TelemtConfig {
         Ok(params)
     }
 
+    pub async fn read_link_params_offloaded(
+        self: Arc<Self>,
+    ) -> Result<TelemtLinkParams, anyhow::Error> {
+        let path = self.path.display().to_string();
+        tokio::task::spawn_blocking(move || self.read_link_params())
+            .await
+            .map_err(|error| anyhow::anyhow!("Blocking read_link_params task failed for {}: {}", path, error))?
+    }
+
     /// Добавляет или обновляет пользователя в [access.users].
     pub fn upsert_user(&self, username: &str, secret: &str) -> Result<(), anyhow::Error> {
         tracing::info!(username = username, "Upserting user in telemt config");
@@ -131,6 +140,17 @@ impl TelemtConfig {
         self.write_atomic(&new_content)?;
         tracing::info!(username = username, "User upserted in telemt config");
         Ok(())
+    }
+
+    pub async fn upsert_user_offloaded(
+        self: Arc<Self>,
+        username: String,
+        secret: String,
+    ) -> Result<(), anyhow::Error> {
+        let path = self.path.display().to_string();
+        tokio::task::spawn_blocking(move || self.upsert_user(&username, &secret))
+            .await
+            .map_err(|error| anyhow::anyhow!("Blocking upsert_user task failed for {}: {}", path, error))?
     }
 
     /// Удаляет пользователя из [access.users].
@@ -175,6 +195,13 @@ impl TelemtConfig {
             tracing::warn!(username = username, "User was not found in telemt config");
         }
         Ok(existed)
+    }
+
+    pub async fn remove_user_offloaded(self: Arc<Self>, username: String) -> Result<bool, anyhow::Error> {
+        let path = self.path.display().to_string();
+        tokio::task::spawn_blocking(move || self.remove_user(&username))
+            .await
+            .map_err(|error| anyhow::anyhow!("Blocking remove_user task failed for {}: {}", path, error))?
     }
 
     fn write_atomic(&self, content: &str) -> Result<(), anyhow::Error> {

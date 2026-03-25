@@ -134,6 +134,20 @@ pub struct AdminStats {
 }
 
 #[derive(Debug, Clone)]
+pub struct SyncErrorStat {
+    pub code: String,
+    pub affected_users: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncHealthSummary {
+    pub degraded_users: i64,
+    pub approved_via_control_api: i64,
+    pub approved_via_legacy: i64,
+    pub top_sync_errors: Vec<SyncErrorStat>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AdminActivity {
     pub timestamp: i64,
     pub kind: AdminActivityKind,

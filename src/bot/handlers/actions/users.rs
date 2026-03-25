@@ -2,7 +2,7 @@ use crate::bot::handlers::callback_data::UserLimitField;
 use crate::bot::handlers::format::user_display_name;
 use crate::bot::handlers::shared::build_bot_start_link;
 use crate::bot::keyboards::user_lookup_candidates_keyboard;
-use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card};
+use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card_screen};
 use crate::bot::handlers::state::BotState;
 use crate::db::RegistrationRequest;
 use chrono::{Duration, NaiveDate, Utc};
@@ -71,6 +71,40 @@ async fn resolve_active_user_candidates(
                 .await
         }
     }
+}
+
+async fn load_runtime_info(
+    state: &BotState,
+    user: &RegistrationRequest,
+) -> Option<crate::telemt_backend::TelemtUserInfo> {
+    let telemt_username = user.telemt_username.as_deref()?;
+    match state
+        .telemt_backend
+        .get_user_info(telemt_username, user.secret.as_deref())
+        .await
+    {
+        Ok(info) => info,
+        Err(error) => {
+            tracing::warn!(
+                tg_user_id = user.tg_user_id,
+                error = %error,
+                "Не удалось получить runtime-данные пользователя"
+            );
+            None
+        }
+    }
+}
+
+pub async fn show_user_card(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<teloxide::types::MessageId>,
+    user: &RegistrationRequest,
+    page: i64,
+    state: &BotState,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let runtime_info = load_runtime_info(state, user).await;
+    show_user_card_screen(bot, chat_id, message_id, user, runtime_info, page).await
 }
 
 pub async fn prompt_delete_confirmation(

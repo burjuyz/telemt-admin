@@ -5,7 +5,8 @@ use super::format::{
 };
 use super::shared::{HandlerResult, build_user_qr_png_bytes, callback_message_target};
 use super::state::BotState;
-use crate::db::{AdminActivity, AdminActivityKind, RequestStatus};
+use crate::db::{AdminActivity, AdminActivityKind, AdminStats, RequestStatus, SyncHealthSummary};
+use crate::runtime::{RuntimeCapabilities, ServiceEvents, ServiceSummary};
 use std::future::Future;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardMarkup, InputFile, KeyboardRemove, MessageId};
@@ -130,35 +131,30 @@ fn admin_activity_summary(activity: &AdminActivity) -> String {
     }
 }
 
-async fn render_service_panel_text(
-    state: &BotState,
-    notice: Option<&str>,
-) -> Result<String, anyhow::Error> {
-    let caps = state.telemt_runtime.capabilities();
-    let summary = state.telemt_runtime.summary().await;
-    let service_events = state.telemt_runtime.recent_events(3).await;
-    let admin_events = state.db.list_recent_admin_activities(4).await?;
-    let stats = state.db.admin_stats().await?;
-    let active_tokens = state.db.count_active_invite_tokens().await?;
-    let telemt_stats = match state.telemt_backend.stats_summary().await {
-        Ok(value) => value,
-        Err(error) => {
-            tracing::warn!(error = %error, "Не удалось получить stats summary telemt");
-            None
-        }
-    };
-    let connections_summary = match state.telemt_backend.connections_summary(5).await {
-        Ok(value) => value,
-        Err(error) => {
-            tracing::warn!(error = %error, "Не удалось получить connections summary telemt");
-            None
-        }
-    };
+pub struct ServicePanelData {
+    pub notice: Option<String>,
+    pub caps: RuntimeCapabilities,
+    pub runtime_label: String,
+    pub backend_mode: crate::telemt_backend::TelemtBackendMode,
+    pub summary: ServiceSummary,
+    pub service_events: ServiceEvents,
+    pub admin_events: Vec<AdminActivity>,
+    pub stats: AdminStats,
+    pub active_tokens: i64,
+    pub sync_health: SyncHealthSummary,
+    pub telemt_stats: Option<crate::telemt_backend::TelemtStatsSummary>,
+    pub telemt_stats_error: Option<String>,
+    pub connections_summary: Option<crate::telemt_backend::TelemtConnectionsSummary>,
+    pub connections_summary_error: Option<String>,
+    pub runtime_snapshot: Option<crate::telemt_backend::TelemtRuntimeSnapshot>,
+    pub runtime_snapshot_error: Option<String>,
+}
 
-    let status_label = if caps.shows_systemd_unit {
-        service_status_label(&summary.active_state, &summary.sub_state)
+fn render_service_panel_text(data: &ServicePanelData) -> String {
+    let status_label = if data.caps.shows_systemd_unit {
+        service_status_label(&data.summary.active_state, &data.summary.sub_state)
     } else {
-        format!("{} · {}", summary.active_state, summary.sub_state)
+        format!("{} · {}", data.summary.active_state, data.summary.sub_state)
     };
     let admin_version = env!("CARGO_PKG_VERSION");
 
@@ -169,15 +165,15 @@ async fn render_service_panel_text(
     ];
 
     lines.push(String::new());
-    if caps.shows_systemd_unit {
+    if data.caps.shows_systemd_unit {
         lines.push(format!(
             "Юнит {}: {}",
-            state.telemt_runtime.display_label(),
+            data.runtime_label,
             status_label
         ));
         lines.push(format!(
             "Проверка systemd: {}",
-            if summary.success {
+            if data.summary.success {
                 "OK"
             } else {
                 "ошибка"
@@ -186,12 +182,12 @@ async fn render_service_panel_text(
     } else {
         lines.push(format!(
             "Telemt ({}): {}",
-            state.telemt_runtime.display_label(),
+            data.runtime_label,
             status_label
         ));
         lines.push(format!(
             "Статус host-runtime: {}",
-            if summary.success {
+            if data.summary.success {
                 "OK"
             } else {
                 "ошибка"
@@ -199,15 +195,15 @@ async fn render_service_panel_text(
         ));
     }
 
-    if let Some(notice) = notice {
+    if let Some(notice) = data.notice.as_deref() {
         lines.push(format!("Действие: {}", notice));
     }
 
-    if caps.shows_systemd_unit {
+    if data.caps.shows_systemd_unit {
         lines.push(format!(
             "Unit: {} | PID: {}",
-            summary.unit_file_state,
-            summary
+            data.summary.unit_file_state,
+            data.summary
                 .main_pid
                 .map(|pid| pid.to_string())
                 .unwrap_or_else(|| "—".to_string())
@@ -217,24 +213,30 @@ async fn render_service_panel_text(
     }
     lines.push(format!(
         "Пользователи: {} | Заявки: {} | Токены: {}",
-        stats.approved, stats.pending, active_tokens
+        data.stats.approved, data.stats.pending, data.active_tokens
+    ));
+    lines.push(format!(
+        "Sync: degraded {} | API {} | legacy {}",
+        data.sync_health.degraded_users,
+        data.sync_health.approved_via_control_api,
+        data.sync_health.approved_via_legacy
     ));
     lines.push(format!(
         "Режим провижининга: {}",
-        match state.telemt_backend.mode() {
+        match data.backend_mode {
             crate::telemt_backend::TelemtBackendMode::LegacyFile => "файл + systemd",
             crate::telemt_backend::TelemtBackendMode::ControlApi => "control API",
         }
     ));
 
-    if let Some(exec_status) = summary.exec_main_status {
+    if let Some(exec_status) = data.summary.exec_main_status {
         lines.push(format!("Код процесса: {}", exec_status));
     }
-    if let Some(error) = &summary.error {
+    if let Some(error) = &data.summary.error {
         lines.push(format!("Ошибка статуса: {}", compact_line(error, 90)));
     }
 
-    if let Some(snapshot) = state.telemt_backend.runtime_snapshot(6).await? {
+    if let Some(snapshot) = data.runtime_snapshot.as_ref() {
         lines.push(String::new());
         lines.push("Демон (control API)".to_string());
         lines.push(format!("Профиль: {}", snapshot.source.as_str()));
@@ -339,9 +341,16 @@ async fn render_service_panel_text(
                 ));
             }
         }
+    } else if let Some(error) = data.runtime_snapshot_error.as_deref() {
+        lines.push(String::new());
+        lines.push("Демон (control API)".to_string());
+        lines.push(format!(
+            "Ошибка опроса runtime API: {}",
+            compact_line(error, 90)
+        ));
     }
 
-    if let Some(summary) = telemt_stats {
+    if let Some(summary) = data.telemt_stats.as_ref() {
         lines.push(String::new());
         lines.push("Нагрузка".to_string());
         lines.push(format!(
@@ -354,8 +363,14 @@ async fn render_service_panel_text(
             summary.connections_bad_total,
             summary.handshake_timeouts_total
         ));
+    } else if let Some(error) = data.telemt_stats_error.as_deref() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Нагрузка telemt: ошибка опроса ({})",
+            compact_line(error, 90)
+        ));
     }
-    if let Some(connections) = connections_summary {
+    if let Some(connections) = data.connections_summary.as_ref() {
         lines.push(format!(
             "Live: {} | ME: {} | Direct: {} | active users: {}",
             connections.current_connections,
@@ -363,40 +378,53 @@ async fn render_service_panel_text(
             connections.current_connections_direct,
             connections.active_users
         ));
+    } else if let Some(error) = data.connections_summary_error.as_deref() {
+        lines.push(format!(
+            "Live connections: ошибка опроса ({})",
+            compact_line(error, 90)
+        ));
+    }
+
+    if !data.sync_health.top_sync_errors.is_empty() {
+        lines.push(String::new());
+        lines.push("Sync ошибки:".to_string());
+        for item in data.sync_health.top_sync_errors.iter().take(3) {
+            lines.push(format!("• {} · {}", item.code, item.affected_users));
+        }
     }
 
     lines.push(String::new());
     lines.push(
-        if caps.shows_journal_tail {
+        if data.caps.shows_journal_tail {
             "События сервиса:"
         } else {
             "События сервиса (journal недоступен в этом runtime):"
         }
         .to_string(),
     );
-    if service_events.lines.is_empty() {
+    if data.service_events.lines.is_empty() {
         lines.push(
-            service_events
+            data.service_events
                 .error
                 .as_deref()
                 .map(|error| format!("• {}", compact_line(error, 90)))
                 .unwrap_or_else(|| "• нет данных".to_string()),
         );
     } else {
-        if !service_events.success {
+        if !data.service_events.success {
             lines.push("• журнал прочитан частично".to_string());
         }
-        for line in service_events.lines.iter().take(3) {
+        for line in data.service_events.lines.iter().take(3) {
             lines.push(format!("• {}", compact_line(line, 90)));
         }
     }
 
     lines.push(String::new());
     lines.push("Действия админа:".to_string());
-    if admin_events.is_empty() {
+    if data.admin_events.is_empty() {
         lines.push("• пока нет событий".to_string());
     } else {
-        for item in admin_events.iter().take(4) {
+        for item in data.admin_events.iter().take(4) {
             lines.push(format!(
                 "• {} · {}",
                 format_timestamp(item.timestamp),
@@ -405,7 +433,7 @@ async fn render_service_panel_text(
         }
     }
 
-    Ok(lines.join("\n"))
+    lines.join("\n")
 }
 
 pub async fn send_text_with_keyboard_removed(
@@ -829,29 +857,19 @@ pub async fn admin_show_stats(
     .await
 }
 
-pub async fn admin_show_service_panel(
+pub async fn admin_show_service_panel_screen(
     bot: &Bot,
     chat_id: ChatId,
-    state: &BotState,
     message_id: Option<MessageId>,
+    data: ServicePanelData,
 ) -> HandlerResult {
-    admin_show_service_panel_with_notice(bot, chat_id, state, message_id, None).await
-}
-
-pub async fn admin_show_service_panel_with_notice(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    message_id: Option<MessageId>,
-    notice: Option<&str>,
-) -> HandlerResult {
-    let text = render_service_panel_text(state, notice).await?;
+    let text = render_service_panel_text(&data);
     upsert_screen(
         bot,
         chat_id,
         message_id,
         text,
-        crate::bot::keyboards::service_control_buttons(&state.telemt_runtime.capabilities()),
+        crate::bot::keyboards::service_control_buttons(&data.caps),
     )
     .await
 }
@@ -913,33 +931,14 @@ pub async fn send_user_qr_to_admin(
     Ok(())
 }
 
-pub async fn show_user_card(
+pub async fn show_user_card_screen(
     bot: &Bot,
     chat_id: ChatId,
     message_id: Option<MessageId>,
     user: &crate::db::RegistrationRequest,
+    runtime_info: Option<crate::telemt_backend::TelemtUserInfo>,
     page: i64,
-    state: &BotState,
 ) -> HandlerResult {
-    let runtime_info = if let Some(telemt_username) = user.telemt_username.as_deref() {
-        match state
-            .telemt_backend
-            .get_user_info(telemt_username, user.secret.as_deref())
-            .await
-        {
-            Ok(info) => info,
-            Err(error) => {
-                tracing::warn!(
-                    tg_user_id = user.tg_user_id,
-                    error = %error,
-                    "Не удалось получить runtime-данные пользователя"
-                );
-                None
-            }
-        }
-    } else {
-        None
-    };
     upsert_screen(
         bot,
         chat_id,
@@ -950,13 +949,11 @@ pub async fn show_user_card(
     .await
 }
 
-pub async fn admin_show_connections_summary(
-    bot: &Bot,
-    chat_id: ChatId,
-    state: &BotState,
-    message_id: Option<MessageId>,
-) -> HandlerResult {
-    let text = match state.telemt_backend.connections_summary(10).await? {
+fn render_connections_summary_text(
+    summary: Option<&crate::telemt_backend::TelemtConnectionsSummary>,
+    error: Option<&str>,
+) -> String {
+    match summary {
         Some(summary) => {
             let mut lines = vec![
                 "📈 Top пользователей".to_string(),
@@ -999,15 +996,31 @@ pub async fn admin_show_connections_summary(
             }
             lines.join("\n")
         }
-        None => "📈 Top пользователей\n\nRuntime endpoint недоступен или выключен в telemt API."
-            .to_string(),
-    };
+        None => {
+            let mut text =
+                "📈 Top пользователей\n\nRuntime endpoint недоступен или выключен в telemt API."
+                    .to_string();
+            if let Some(error) = error {
+                text.push_str("\n\nПричина: ");
+                text.push_str(&compact_line(error, 90));
+            }
+            text
+        }
+    }
+}
 
+pub async fn admin_show_connections_summary_screen(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    summary: Option<crate::telemt_backend::TelemtConnectionsSummary>,
+    summary_error: Option<String>,
+) -> HandlerResult {
     upsert_screen(
         bot,
         chat_id,
         message_id,
-        text,
+        render_connections_summary_text(summary.as_ref(), summary_error.as_deref()),
         crate::bot::keyboards::connections_summary_keyboard(),
     )
     .await
