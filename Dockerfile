@@ -4,19 +4,6 @@
 FROM docker.io/library/rust:1-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-# Отдельно прогреваем кэш Cargo-зависимостей, чтобы при изменениях в src
-# повторный docker build не пересобирал все crates с нуля.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git/db \
-    <<'EOF'
-set -eux
-mkdir -p src
-cat > src/main.rs <<'RS'
-fn main() {}
-RS
-cargo build --release --locked
-rm -rf src
-EOF
 COPY src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git/db \
