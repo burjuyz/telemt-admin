@@ -11,6 +11,8 @@
 - задайте в `telemt-admin.toml` секцию `[runtime]` с `mode = "external"` (или `none`);
 - убедитесь, что `[telemt_api].base_url` указывает на реальный адрес control API (имя сервиса в Docker-сети, а не только `127.0.0.1`);
 - для чисто API-сценария рекомендуется `allow_file_fallback = false`.
+- текущий пример Compose предполагает именно API-only путь: конфиг `telemt-admin` монтируется read-only, а общий write-path к `telemt.toml` не настраивается;
+- если нужен legacy fallback с записью в `telemt.toml`, потребуется отдельный RW mount/volume и явное понимание, что этот сценарий не покрывается примером `deploy/compose/docker-compose.telemt-admin.example.yml`.
 
 Кнопки start/stop/restart/reload на экране `/service` в этих режимах скрыты; диагностика идёт через control API.
 
@@ -18,10 +20,11 @@
 
 ## Группы, рассылка, импорт и тексты бота
 
-- **Группы**: таблицы `user_groups` и `user_group_members`; опциональный общий срок группы — `user_groups.expires_at` (unix). Кнопка «Применить срок группы ко всем» выполняет PATCH `expiration` для участников (нужен включённый `[telemt_api]`).
+- **Группы**: таблицы `user_groups` и `user_group_members`; опциональный общий срок группы — `user_groups.expires_at` (unix). В UI доступны сценарии «задать/изменить срок», «снять срок» и «применить срок группы ко всем»; последний выполняет PATCH `expiration` для участников (нужен включённый `[telemt_api]`).
 - **Рассылка**: одно сообщение всем пользователям со статусом `approved`; учитывайте лимиты Telegram и то, что бот не доставит сообщение пользователям, которые ни разу не взаимодействовали с ботом.
 - **Импорт из telemt**: по числовому Telegram user id, только при `telemt_api.enabled`; локальная запись создаётся без сохранённого секрета (ссылки строятся через control API при `prefer_api_links` и т.п.).
-- **Тексты**: секция `[bot_messages]` и env `TELEMT_ADMIN__BOT_MESSAGES__*` (см. `src/config.rs`).
+- **Автоподхват existing user**: если локальной записи ещё нет, но пользователь уже существует в `telemt API` как `tg_<id>`, user flow (`/start`, `/link`, invite) может автоматически импортировать его в локальную БД. Для invite-перехода такого пользователя `usage_count` не увеличивается.
+- **Тексты**: секция `[bot_messages]` и env `TELEMT_ADMIN__BOT_MESSAGES__*` (см. `src/config.rs`). Помимо `/start`, можно переопределять шаблон ссылки `{link}`, текст авто-одобрения и сообщения вокруг рассылки.
 
 ## Предусловия
 

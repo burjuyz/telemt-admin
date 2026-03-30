@@ -24,7 +24,9 @@
 - `src/bot/handlers/commands/mod.rs` — slash-команды как точки входа в основные разделы и сценарии бота.
 - `src/bot/handlers/callbacks/mod.rs` — inline callbacks и wizard-навигация.
 - `src/bot/handlers/actions/service.rs` — orchestration для service panel, connections summary и service actions до передачи данных в presentation.
-- `src/bot/handlers/actions/users.rs` — orchestration пользовательской карточки, lookup-сценариев и изменения live-лимитов.
+- `src/bot/handlers/actions/users.rs` — orchestration пользовательской карточки, lookup-сценариев, auto-import существующего `telemt`-пользователя и изменения live-лимитов.
+- `src/bot/handlers/actions/access.rs` — approve/invite flow, выдача ссылок и правила auto-import/повторного invite для existing user.
+- `src/bot/handlers/actions/broadcast.rs` — рассылка approved-пользователям и итоговая сводка по доставке.
 - `src/bot/handlers/menu.rs` — текстовый ввод для активного wizard-state.
 - `src/bot/keyboards.rs` — inline-клавиатуры.
 
@@ -42,10 +44,12 @@
 - Доменные операции лучше переиспользовать из общих функций, а не дублировать в командах и callbacks.
 - Новые UX-сценарии желательно строить как `slash -> wizard/inline`, а не как роутинг по тексту сообщений.
 - `/start` остаётся универсальной точкой входа: обычный user flow, invite-token deep link и admin deep link на конкретный экран/сущность.
+- Для существующего пользователя `tg_<id>`, уже присутствующего в `telemt API`, user flow может автоматически создать локальную approved-запись без отдельного ручного импорта.
 - Источником истины для wizard-state должна оставаться SQLite, чтобы сценарии корректно восстанавливались после рестарта и TTL применялся единообразно.
 - Блокирующие системные команды не должны выполняться напрямую в async Telegram flow.
 - Блокирующий файловый I/O (`telemt.toml`, self-update unpack/copy/rename) не должен выполняться напрямую в async Telegram flow; для этого используется явный offload через `spawn_blocking`.
 - Фоновый мониторинг не должен дублировать UI-логику: он получает только структурированные snapshots и решает, слать ли уведомление.
+- Редактируемые пользовательские тексты остаются на уровне конфигурации `[bot_messages]` и env overlay, без отдельного DB/UI-редактора.
 
 Границы слоёв:
 
@@ -53,6 +57,7 @@
 - `src/bot/handlers/screens.rs` и `src/bot/keyboards.rs` отвечают за presentation.
 - orchestration уровня “БД + telemt backend + Telegram-ответ” лучше держать в action/use-case функциях, а не размазывать по callback/router-коду.
 - service panel, connections summary и user card должны загружать данные через `actions/*`, а не собирать их напрямую внутри `screens`.
+- parsing и применение wizard-значений для сроков/лимитов лучше держать рядом с use-case уровнем, а не размазывать по callback payload.
 - `telemt_backend` должен оставаться единой внешней точкой выбора между control API и legacy file/systemd path; детали HTTP-клиента, DTO и mapping должны жить во внутренних подмодулях backend-слоя, а не утекать в handlers.
 - `monitor` использует только `BotState` и структурированные ответы `telemt_backend`; он не должен напрямую читать БД-схему `telemt` или строить UI-экраны.
 
@@ -60,7 +65,8 @@
 
 - `telemt_backend` умеет получать live-данные пользователя из `GET /v1/users/{username}` и менять лимиты через `PATCH /v1/users/{username}`;
 - service panel показывает не только systemd status, но и runtime snapshots, нагрузку и top users;
-- user card совмещает локальные sync-метаданные SQLite и live-данные из control API;
+- user card совмещает локальные sync-метаданные SQLite, `invite_token_id`, live-данные из control API и простые сигналы аномальной активности;
+- admin stats используют не только SQLite-агрегаты, но и live summary/top users из `telemt API`, если они доступны;
 - фоновые alert-ы управляются секцией `[notifications]` и используют polling `monitor.rs`.
 
 База данных:
@@ -72,3 +78,5 @@
   - новые индексы;
 - сложные преобразования схемы лучше оформлять отдельно и явно.
 - переходы состояний регистрации и consume invite-токена должны обновляться условными запросами, чтобы конкурентные действия не затирали друг друга.
+- `invite_token_id` остаётся частью локальной registration-модели и используется как источник invite в карточках, pending-заявках и admin-уведомлениях.
+- `user_groups.expires_at` хранится в unix-time и выступает общим сроком группы, который затем массово раскатывается на участников через control API.
