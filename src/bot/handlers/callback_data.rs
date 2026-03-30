@@ -106,6 +106,8 @@ pub enum CallbackAction {
     ShowGroupsMenu,
     OpenGroupCard { group_id: i64 },
     PromptCreateGroup,
+    PromptGroupExpiry { group_id: i64 },
+    ClearGroupExpiry { group_id: i64 },
     GroupDeactivateAll { group_id: i64 },
     GroupApplyExpiry { group_id: i64 },
     UserGroupPicker { tg_user_id: i64, page: i64 },
@@ -195,6 +197,12 @@ impl CallbackAction {
             Self::ShowGroupsMenu => "v1|admin|groups".to_string(),
             Self::OpenGroupCard { group_id } => format!("v1|admin|groups|open|{group_id}"),
             Self::PromptCreateGroup => "v1|admin|groups|create".to_string(),
+            Self::PromptGroupExpiry { group_id } => {
+                format!("v1|admin|groups|expiry|prompt|{group_id}")
+            }
+            Self::ClearGroupExpiry { group_id } => {
+                format!("v1|admin|groups|expiry|clear|{group_id}")
+            }
             Self::GroupDeactivateAll { group_id } => {
                 format!("v1|admin|groups|deactivate|{group_id}")
             },
@@ -329,6 +337,16 @@ impl CallbackAction {
                 group_id: parse_i64(group_id)?,
             }),
             ["v1", "admin", "groups", "create"] => Some(Self::PromptCreateGroup),
+            ["v1", "admin", "groups", "expiry", "prompt", group_id] => {
+                Some(Self::PromptGroupExpiry {
+                    group_id: parse_i64(group_id)?,
+                })
+            }
+            ["v1", "admin", "groups", "expiry", "clear", group_id] => {
+                Some(Self::ClearGroupExpiry {
+                    group_id: parse_i64(group_id)?,
+                })
+            }
             ["v1", "admin", "groups", "deactivate", group_id] => Some(Self::GroupDeactivateAll {
                 group_id: parse_i64(group_id)?,
             }),
@@ -423,6 +441,8 @@ mod tests {
             CallbackAction::ShowGroupsMenu,
             CallbackAction::OpenGroupCard { group_id: 7 },
             CallbackAction::PromptCreateGroup,
+            CallbackAction::PromptGroupExpiry { group_id: 8 },
+            CallbackAction::ClearGroupExpiry { group_id: 9 },
             CallbackAction::GroupDeactivateAll { group_id: 3 },
             CallbackAction::GroupApplyExpiry { group_id: 4 },
             CallbackAction::UserGroupPicker {

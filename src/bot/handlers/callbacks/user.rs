@@ -1,5 +1,5 @@
 use super::common::{ack_callback, replace_wizard_state};
-use crate::bot::handlers::actions::send_user_link;
+use crate::bot::handlers::actions::{send_user_link, try_auto_import_remote_user_by_tg_id};
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{show_admin_home, show_usage_guide, show_user_home};
 use crate::bot::handlers::shared::callback_message_target;
@@ -17,6 +17,16 @@ pub async fn handle_user_action(
             let user_id = q.from.id.0 as i64;
             if let Some((chat_id, message_id)) = callback_message_target(q) {
                 clear_wizard_state(state, user_id).await?;
+                let username = q.from.username.as_deref();
+                let display_name = q.from.full_name();
+                let _ = try_auto_import_remote_user_by_tg_id(
+                    state,
+                    user_id,
+                    username,
+                    Some(display_name.as_str()),
+                    None,
+                )
+                .await?;
                 ack_callback(bot, q.id.clone(), None, false).await?;
                 show_user_home(bot, chat_id, Some(message_id), state, user_id).await?;
             }
@@ -74,6 +84,16 @@ pub async fn handle_user_action(
                 if state.config.is_admin(user_id) {
                     show_admin_home(bot, chat_id, Some(message_id)).await?;
                 } else {
+                    let username = q.from.username.as_deref();
+                    let display_name = q.from.full_name();
+                    let _ = try_auto_import_remote_user_by_tg_id(
+                        state,
+                        user_id,
+                        username,
+                        Some(display_name.as_str()),
+                        None,
+                    )
+                    .await?;
                     show_user_home(bot, chat_id, Some(message_id), state, user_id).await?;
                 }
             }

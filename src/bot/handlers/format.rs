@@ -117,6 +117,44 @@ fn format_ip_list(values: &[String]) -> String {
     }
 }
 
+fn render_runtime_alerts(runtime_info: Option<&TelemtUserInfo>) -> String {
+    let Some(info) = runtime_info else {
+        return "нет live-данных".to_string();
+    };
+
+    let mut alerts = Vec::new();
+    if let (Some(current), Some(limit)) = (info.current_connections, info.max_tcp_conns)
+        && current > limit as u64
+    {
+        alerts.push(format!("TCP {}>{}", current, limit));
+    }
+    if let (Some(current), Some(limit)) = (info.active_unique_ips, info.max_unique_ips)
+        && current > limit
+    {
+        alerts.push(format!("active IPs {}>{}", current, limit));
+    }
+    if let (Some(current), Some(limit)) = (info.recent_unique_ips, info.max_unique_ips)
+        && current > limit
+    {
+        alerts.push(format!("recent IPs {}>{}", current, limit));
+    }
+    if let (Some(total), Some(quota)) = (info.total_octets, info.data_quota_bytes)
+        && total >= quota
+    {
+        alerts.push(format!(
+            "traffic {} / {}",
+            format_bytes_human(total),
+            format_bytes_human(quota)
+        ));
+    }
+
+    if alerts.is_empty() {
+        "не обнаружены".to_string()
+    } else {
+        alerts.join(", ")
+    }
+}
+
 pub fn render_user_card_text(
     user: &RegistrationRequest,
     runtime_info: Option<&TelemtUserInfo>,
@@ -186,6 +224,7 @@ pub fn render_user_card_text(
     let links_count = runtime_info
         .map(|info| info.links.len().to_string())
         .unwrap_or_else(|| "0".to_string());
+    let runtime_alerts = render_runtime_alerts(runtime_info);
     let invite_token_id = user
         .invite_token_id
         .map(|id| id.to_string())
@@ -214,6 +253,7 @@ pub fn render_user_card_text(
          🛡 max TCP: {}\n\
          🧮 quota: {}\n\
          🌍 max unique IPs: {}\n\
+         🚨 anomalies: {}\n\
          ⏳ expires: {}\n\
          🔗 links: {}\n\
          📅 {}",
@@ -238,6 +278,7 @@ pub fn render_user_card_text(
         max_tcp_conns,
         data_quota,
         max_unique_ips,
+        runtime_alerts,
         expiration,
         links_count,
         format_timestamp(user.created_at),

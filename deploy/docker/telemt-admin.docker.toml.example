@@ -28,3 +28,16 @@ notify_on_new_request = true
 default_token_days = 14
 max_token_days = 180
 allow_auto_approve_tokens = true
+
+[bot_messages]
+# При /start без invite-токена можно отдать нейтральный текст-заглушку и не переводить
+# пользователя сразу в wizard ввода токена.
+# start_without_invite = "Привет. Бот сейчас работает в закрытом режиме."
+#
+# Простые шаблоны без отдельного движка; доступны плейсхолдеры вроде {link}, {ok}, {failed}, {total}.
+# user_link_template = "Ваша ссылка:\n\n{link}"
+# access_approved_template = "Доступ готов.\n\n{link}"
+# request_submitted = "Заявка отправлена. Мы свяжемся с вами."
+# request_pending = "Заявка уже на рассмотрении."
+# request_rejected = "Заявка отклонена."
+# broadcast_prompt = "Рассылка {audience}. Отправьте текст следующим сообщением."

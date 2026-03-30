@@ -149,6 +149,16 @@ pub fn groups_menu_keyboard(groups: &[crate::db::UserGroup]) -> InlineKeyboardMa
 
 pub fn group_card_keyboard(group_id: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "🗓 Задать/изменить срок",
+                CallbackAction::PromptGroupExpiry { group_id }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "♻️ Снять срок",
+                CallbackAction::ClearGroupExpiry { group_id }.encode(),
+            ),
+        ],
         vec![InlineKeyboardButton::callback(
             "⛔ Отключить всех",
             CallbackAction::GroupDeactivateAll { group_id }.encode(),

@@ -22,6 +22,8 @@ pub enum WizardState {
     AdminBroadcastAwaitingMessage,
     /// Название новой группы пользователей.
     AdminGroupAwaitingName,
+    /// Новое значение общего срока действия группы.
+    AdminGroupExpiryAwaitingValue { group_id: i64 },
     /// Telegram user id для импорта из telemt API.
     AdminImportAwaitingTgId,
 }
@@ -55,6 +57,9 @@ impl WizardState {
             }
             Self::AdminBroadcastAwaitingMessage => "admin_broadcast_awaiting".to_string(),
             Self::AdminGroupAwaitingName => "admin_group_awaiting_name".to_string(),
+            Self::AdminGroupExpiryAwaitingValue { group_id } => {
+                format!("admin_group_expiry:{group_id}")
+            }
             Self::AdminImportAwaitingTgId => "admin_import_awaiting_tg_id".to_string(),
         }
     }
@@ -73,6 +78,11 @@ impl WizardState {
             "admin_group_awaiting_name" => Some(Self::AdminGroupAwaitingName),
             "admin_import_awaiting_tg_id" => Some(Self::AdminImportAwaitingTgId),
             _ => {
+                if let Some(value) = value.strip_prefix("admin_group_expiry:") {
+                    return Some(Self::AdminGroupExpiryAwaitingValue {
+                        group_id: value.parse::<i64>().ok()?,
+                    });
+                }
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {
                         page: value.parse::<i64>().ok()?.max(1),

@@ -58,26 +58,120 @@ pub struct BotMessages {
     /// Текст после нажатия «Ввести invite-токен» (callback).
     #[serde(default)]
     pub invite_followup_prompt: Option<String>,
+    /// Шаблон сообщения со ссылкой пользователя. Поддерживает `{link}`.
+    #[serde(default)]
+    pub user_link_template: Option<String>,
+    /// Шаблон сообщения после авто-одобрения. Поддерживает `{link}`.
+    #[serde(default)]
+    pub access_approved_template: Option<String>,
+    /// Сообщение после отправки manual-заявки.
+    #[serde(default)]
+    pub request_submitted: Option<String>,
+    /// Сообщение для уже ожидающей manual-заявки.
+    #[serde(default)]
+    pub request_pending: Option<String>,
+    /// Сообщение для отклонённой заявки.
+    #[serde(default)]
+    pub request_rejected: Option<String>,
+    /// Текст-подсказка перед рассылкой. Поддерживает `{audience}`.
+    #[serde(default)]
+    pub broadcast_prompt: Option<String>,
+    /// Сообщение при отмене рассылки пустым текстом.
+    #[serde(default)]
+    pub broadcast_cancelled: Option<String>,
+    /// Итог рассылки. Поддерживает `{ok}`, `{failed}`, `{total}`.
+    #[serde(default)]
+    pub broadcast_summary_template: Option<String>,
 }
 
 impl BotMessages {
+    fn non_empty(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|s| !s.is_empty())
+    }
+
+    fn render_template(
+        template: Option<&str>,
+        default: &str,
+        replacements: &[(&str, String)],
+    ) -> String {
+        let mut rendered = Self::non_empty(template).unwrap_or(default).to_string();
+        for (key, value) in replacements {
+            rendered = rendered.replace(&format!("{{{key}}}"), value);
+        }
+        rendered
+    }
+
     pub fn invite_manual_prompt_or_default(&self) -> &str {
         const DEFAULT: &str = "Введите пригласительный токен следующим сообщением.\n\nЕсли передумали, нажмите «Отмена».";
-        self.invite_manual_prompt
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or(DEFAULT)
+        Self::non_empty(self.invite_manual_prompt.as_deref()).unwrap_or(DEFAULT)
     }
 
     pub fn invite_followup_prompt_or_default(&self) -> &str {
         const DEFAULT: &str =
             "Отправьте invite-токен следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.";
-        self.invite_followup_prompt
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or(DEFAULT)
+        Self::non_empty(self.invite_followup_prompt.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn user_link_text(&self, link: &str) -> String {
+        const DEFAULT: &str = "Ваша ссылка на прокси:\n\n{link}";
+        Self::render_template(
+            self.user_link_template.as_deref(),
+            DEFAULT,
+            &[("link", link.to_string())],
+        )
+    }
+
+    pub fn access_approved_text(&self, link: &str) -> String {
+        const DEFAULT: &str = "Доступ одобрен! Ваша ссылка для подключения:\n\n{link}";
+        Self::render_template(
+            self.access_approved_template.as_deref(),
+            DEFAULT,
+            &[("link", link.to_string())],
+        )
+    }
+
+    pub fn request_submitted_or_default(&self) -> &str {
+        const DEFAULT: &str = "Заявка отправлена. Ожидайте подтверждения.";
+        Self::non_empty(self.request_submitted.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn request_pending_or_default(&self) -> &str {
+        const DEFAULT: &str =
+            "Ваша заявка уже на рассмотрении. Ожидайте подтверждения администратора.";
+        Self::non_empty(self.request_pending.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn request_rejected_or_default(&self) -> &str {
+        const DEFAULT: &str = "Ваша заявка на регистрацию отклонена администратором.";
+        Self::non_empty(self.request_rejected.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn broadcast_prompt_text(&self, audience: &str) -> String {
+        const DEFAULT: &str = "Рассылка {audience}.\n\nОтправьте текст одним сообщением. Пустое сообщение отменит шаг.\n\nУчтите лимиты Telegram и то, что бот не может писать пользователям, которые ни разу не нажали /start.";
+        Self::render_template(
+            self.broadcast_prompt.as_deref(),
+            DEFAULT,
+            &[("audience", audience.to_string())],
+        )
+    }
+
+    pub fn broadcast_cancelled_or_default(&self) -> &str {
+        const DEFAULT: &str = "Рассылка отменена (пустой текст).";
+        Self::non_empty(self.broadcast_cancelled.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn broadcast_summary_text(&self, ok: u64, failed: u64, total: u64) -> String {
+        const DEFAULT: &str =
+            "Рассылка завершена.\nУспешно: {ok}\nОшибок: {failed}\nВсего получателей в списке: {total}";
+        Self::render_template(
+            self.broadcast_summary_template.as_deref(),
+            DEFAULT,
+            &[
+                ("ok", ok.to_string()),
+                ("failed", failed.to_string()),
+                ("total", total.to_string()),
+            ],
+        )
     }
 }
 
@@ -390,6 +484,7 @@ mod tests {
             start_without_invite: None,
             invite_manual_prompt: Some("   ".to_string()),
             invite_followup_prompt: None,
+            ..Default::default()
         };
 
         assert!(messages.invite_manual_prompt_or_default().contains("Введите"));

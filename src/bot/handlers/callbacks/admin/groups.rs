@@ -53,6 +53,48 @@ pub async fn handle(
             .await?;
             Ok(true)
         }
+        CallbackAction::PromptGroupExpiry { group_id } => {
+            let Some((admin_id, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let Some(group) = state.db.get_user_group_by_id(group_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                return Ok(true);
+            };
+            set_wizard_state(state, admin_id, WizardState::AdminGroupExpiryAwaitingValue { group_id })
+                .await?;
+            ack_callback(bot, q.id.clone(), Some("Жду срок группы"), false).await?;
+            let current = group
+                .expires_at
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "не задан".to_string());
+            bot.send_message(
+                chat_id,
+                format!(
+                    "Введите общий срок для группы «{}».\n\nПоддерживается RFC3339, `YYYY-MM-DD`, `+30d`.\nЧтобы снять срок, отправьте `none`.\n\nТекущее значение: {}",
+                    group.name, current
+                ),
+            )
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::ClearGroupExpiry { group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let updated = state.db.set_user_group_expiry(group_id, None).await?;
+            if !updated {
+                ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                return Ok(true);
+            }
+            let Some(group) = state.db.get_user_group_by_id(group_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), Some("Срок группы снят"), false).await?;
+            admin_show_group_card(bot, chat_id, Some(message_id), state, &group).await?;
+            Ok(true)
+        }
         CallbackAction::GroupDeactivateAll { group_id } => {
             let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);

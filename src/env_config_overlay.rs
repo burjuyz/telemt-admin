@@ -152,6 +152,46 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__BOT_MESSAGES__INVITE_FOLLOWUP_PROMPT".to_string());
     }
 
+    if let Some(v) = read_nonempty("BOT_MESSAGES__USER_LINK_TEMPLATE") {
+        config.bot_messages.user_link_template = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__USER_LINK_TEMPLATE".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__ACCESS_APPROVED_TEMPLATE") {
+        config.bot_messages.access_approved_template = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__ACCESS_APPROVED_TEMPLATE".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__REQUEST_SUBMITTED") {
+        config.bot_messages.request_submitted = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__REQUEST_SUBMITTED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__REQUEST_PENDING") {
+        config.bot_messages.request_pending = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__REQUEST_PENDING".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__REQUEST_REJECTED") {
+        config.bot_messages.request_rejected = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__REQUEST_REJECTED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__BROADCAST_PROMPT") {
+        config.bot_messages.broadcast_prompt = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__BROADCAST_PROMPT".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__BROADCAST_CANCELLED") {
+        config.bot_messages.broadcast_cancelled = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__BROADCAST_CANCELLED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__BROADCAST_SUMMARY_TEMPLATE") {
+        config.bot_messages.broadcast_summary_template = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__BROADCAST_SUMMARY_TEMPLATE".to_string());
+    }
+
     Ok(applied)
 }
 

@@ -71,7 +71,7 @@ pub async fn handle(
             }
             bot.send_message(
                 ChatId(request.tg_user_id),
-                format!("Ваша ссылка на прокси:\n\n{}", link),
+                state.config.bot_messages.user_link_text(&link),
             )
             .await?;
             tracing::info!("Admin {} approved request #{}", admin_id, request_id);
@@ -92,7 +92,7 @@ pub async fn handle(
                 }
                 bot.send_message(
                     ChatId(request.tg_user_id),
-                    "Ваша заявка на регистрацию отклонена администратором.",
+                    state.config.bot_messages.request_rejected_or_default(),
                 )
                 .await?;
             }

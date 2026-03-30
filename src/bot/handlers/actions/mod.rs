@@ -17,5 +17,6 @@ pub use tokens::{handle_token_create_from_text, open_token_from_lookup_input};
 pub use users::{
     apply_user_limit_from_input, has_active_users, import_remote_user_by_tg_id,
     open_user_from_lookup_input, prompt_delete_confirmation, send_token_start_link,
-    send_user_start_link, show_user_card, user_limit_input_help,
+    send_user_start_link, show_user_card, try_auto_import_remote_user_by_tg_id,
+    user_limit_input_help,
 };

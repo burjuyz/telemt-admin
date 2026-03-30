@@ -8,7 +8,45 @@ use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
     sender_user_id, wizard_state,
 };
+use chrono::{NaiveDate, Utc};
 use teloxide::prelude::*;
+
+fn parse_group_expiration_input(value: &str) -> Result<Option<i64>, anyhow::Error> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("none")
+        || trimmed.eq_ignore_ascii_case("no")
+        || trimmed.eq_ignore_ascii_case("off")
+        || trimmed.eq_ignore_ascii_case("clear")
+        || trimmed.eq_ignore_ascii_case("без даты")
+    {
+        return Ok(None);
+    }
+
+    if let Ok(date_time) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+        return Ok(Some(date_time.timestamp()));
+    }
+
+    if let Some(days) = trimmed.strip_prefix('+') {
+        let days = days.trim_end_matches('d').trim();
+        let days = days
+            .parse::<i64>()
+            .map_err(|_| anyhow::anyhow!("Количество дней должно быть положительным целым числом"))?;
+        if days <= 0 {
+            return Err(anyhow::anyhow!("Количество дней должно быть больше нуля"));
+        }
+        return Ok(Some((Utc::now() + chrono::Duration::days(days)).timestamp()));
+    }
+
+    let date = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+        .map_err(|_| anyhow::anyhow!("Используйте RFC3339, YYYY-MM-DD, +30d или `none`"))?;
+    let date_time = date
+        .and_hms_opt(23, 59, 59)
+        .ok_or_else(|| anyhow::anyhow!("Не удалось собрать дату истечения"))?;
+    Ok(Some(
+        chrono::DateTime::<Utc>::from_naive_utc_and_offset(date_time, Utc).timestamp(),
+    ))
+}
 
 pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     let is_admin = is_admin_message(&msg, &state);
@@ -64,6 +102,48 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                     bot.send_message(
                         msg.chat.id,
                         format!("Не удалось создать группу: {}", error),
+                    )
+                    .await?;
+                }
+            }
+        }
+        Some(WizardState::AdminGroupExpiryAwaitingValue { group_id }) => {
+            if !is_admin_message(&msg, &state) {
+                clear_wizard_state(&state, user_id).await?;
+                return Ok(());
+            }
+            let expires_at = match parse_group_expiration_input(text) {
+                Ok(value) => value,
+                Err(error) => {
+                    bot.send_message(
+                        msg.chat.id,
+                        format!("Не удалось разобрать срок группы: {}", error),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            };
+            match state.db.set_user_group_expiry(group_id, expires_at).await {
+                Ok(true) => {
+                    clear_wizard_state(&state, user_id).await?;
+                    let result_text = match expires_at {
+                        Some(ts) => format!(
+                            "Общий срок группы обновлён.\nUnix timestamp: {}\nОткройте карточку группы и примените срок к участникам.",
+                            ts
+                        ),
+                        None => "Общий срок группы снят.".to_string(),
+                    };
+                    bot.send_message(msg.chat.id, result_text).await?;
+                }
+                Ok(false) => {
+                    clear_wizard_state(&state, user_id).await?;
+                    bot.send_message(msg.chat.id, "Группа не найдена.")
+                        .await?;
+                }
+                Err(error) => {
+                    bot.send_message(
+                        msg.chat.id,
+                        format!("Не удалось сохранить срок группы: {}", error),
                     )
                     .await?;
                 }

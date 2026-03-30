@@ -1,5 +1,7 @@
 # Пример: только telemt-admin. Процесс telemt должен быть доступен по сети
 # (например отдельный compose-стек или хост) — укажите telemt_api.base_url в конфиге.
+# Если нужен только control API path, держите allow_file_fallback = false и не монтируйте
+# telemt.toml внутрь контейнера. Для legacy write-path потребуется отдельный RW mount.
 #
 # Запуск:
 #   cp .env.example .env

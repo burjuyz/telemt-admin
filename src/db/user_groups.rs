@@ -135,6 +135,19 @@ impl Db {
         tx.commit().await?;
         Ok(r.rows_affected() > 0)
     }
+
+    pub async fn set_user_group_expiry(
+        &self,
+        group_id: i64,
+        expires_at: Option<i64>,
+    ) -> Result<bool, anyhow::Error> {
+        let result = sqlx::query("UPDATE user_groups SET expires_at = ? WHERE id = ?")
+            .bind(expires_at)
+            .bind(group_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 #[cfg(test)]

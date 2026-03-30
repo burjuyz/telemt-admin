@@ -1,6 +1,6 @@
 use super::actions::{
     admin_show_connections_summary, admin_show_service_panel, process_invite_token,
-    send_user_link, show_user_card,
+    send_user_link, show_user_card, try_auto_import_remote_user_by_tg_id,
 };
 use super::callback_data::CallbackAction;
 use super::screens::{
@@ -268,6 +268,20 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
             }
             RequestStatus::Deleted => {}
         }
+    }
+
+    if try_auto_import_remote_user_by_tg_id(
+        &state,
+        user_id,
+        username.as_deref(),
+        display_name.as_deref(),
+        None,
+    )
+    .await?
+    {
+        clear_wizard_state(&state, user_id).await?;
+        show_user_home(&bot, msg.chat.id, None, &state, user_id).await?;
+        return Ok(());
     }
 
     if let Some(stub) = state

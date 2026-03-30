@@ -4,7 +4,7 @@ use crate::bot::handlers::shared::build_bot_start_link;
 use crate::bot::handlers::state::{BotState, telemt_username};
 use crate::bot::keyboards::user_lookup_candidates_keyboard;
 use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card_screen};
-use crate::db::RegistrationRequest;
+use crate::db::{RegistrationRequest, RequestStatus};
 use crate::telemt_backend::TelemtBackendMode;
 use chrono::{Duration, NaiveDate, Utc};
 use teloxide::payloads::SendMessageSetters;
@@ -426,6 +426,57 @@ pub async fn send_token_start_link(
     )
     .await?;
     Ok(())
+}
+
+/// Если локальной записи ещё нет, но пользователь уже существует в telemt API как `tg_<id>`,
+/// импортирует его в локальную БД как approved без секрета.
+pub async fn try_auto_import_remote_user_by_tg_id(
+    state: &BotState,
+    tg_user_id: i64,
+    tg_username: Option<&str>,
+    tg_display_name: Option<&str>,
+    invite_token_id: Option<i64>,
+) -> Result<bool, anyhow::Error> {
+    if !state.config.telemt_api.enabled {
+        return Ok(false);
+    }
+    if let Some(existing) = state.db.get_request_by_tg_user(tg_user_id).await? {
+        return Ok(matches!(existing.status, RequestStatus::Approved));
+    }
+
+    let telemt_user = telemt_username(tg_user_id);
+    let info = state.telemt_backend.get_user_info(&telemt_user, None).await?;
+    if info.is_none() {
+        return Ok(false);
+    }
+
+    state
+        .db
+        .set_approved(
+            tg_user_id,
+            tg_username,
+            tg_display_name,
+            &telemt_user,
+            "",
+            invite_token_id,
+        )
+        .await?;
+    state
+        .db
+        .mark_sync_state(
+            tg_user_id,
+            TelemtBackendMode::ControlApi.as_str(),
+            None,
+            None,
+        )
+        .await?;
+    tracing::info!(
+        tg_user_id,
+        telemt_username = %telemt_user,
+        invite_token_id = ?invite_token_id,
+        "Автоматически импортировали существующего пользователя из telemt API"
+    );
+    Ok(true)
 }
 
 /// Импортировать пользователя `tg_<id>`, уже существующего в telemt API, в локальную БД.

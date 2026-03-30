@@ -772,6 +772,8 @@ pub async fn admin_show_stats(
     let caps = state.telemt_runtime.capabilities();
     let summary = state.telemt_runtime.summary().await;
     let admin_events = state.db.list_recent_admin_activities(4).await?;
+    let telemt_stats = state.telemt_backend.stats_summary().await.ok().flatten();
+    let connections_summary = state.telemt_backend.connections_summary(3).await.ok().flatten();
     let status_label = if caps.shows_systemd_unit {
         service_status_label(&summary.active_state, &summary.sub_state)
     } else {
@@ -836,6 +838,75 @@ pub async fn admin_show_stats(
     lines.push(format!("• Истёкшие: {}", stats.tokens_expired));
     lines.push(format!("• Исчерпанные: {}", stats.tokens_exhausted));
     lines.push(format!("• Всего создано: {}", stats.tokens_total));
+
+    lines.push(String::new());
+    lines.push("Live telemt:".to_string());
+    if let Some(stats_summary) = telemt_stats.as_ref() {
+        lines.push(format!(
+            "• Uptime: {:.0} s | configured users: {}",
+            stats_summary.uptime_seconds, stats_summary.configured_users
+        ));
+        lines.push(format!(
+            "• Connections total / bad: {} / {}",
+            stats_summary.connections_total, stats_summary.connections_bad_total
+        ));
+        lines.push(format!(
+            "• Handshake timeouts: {}",
+            stats_summary.handshake_timeouts_total
+        ));
+    } else {
+        lines.push("• stats summary: нет данных".to_string());
+    }
+    if let Some(live) = connections_summary.as_ref() {
+        lines.push(format!(
+            "• Live connections: {} | ME: {} | Direct: {} | active users: {}",
+            live.current_connections,
+            live.current_connections_me,
+            live.current_connections_direct,
+            live.active_users
+        ));
+        if let Some(top) = live.top_by_connections.first() {
+            lines.push(format!(
+                "• Top TCP: {} ({} conn, {})",
+                top.username,
+                top.current_connections,
+                format_bytes_human(top.total_octets)
+            ));
+        }
+        if let Some(top) = live.top_by_throughput.first() {
+            lines.push(format!(
+                "• Top traffic: {} ({})",
+                top.username,
+                format_bytes_human(top.total_octets)
+            ));
+        }
+        let mut alerts = Vec::new();
+        if !live.top_by_connections.is_empty() {
+            for user in &live.top_by_connections {
+                if user.current_connections >= 10 {
+                    alerts.push(format!("TCP spike: {} ({})", user.username, user.current_connections));
+                }
+            }
+        }
+        if !live.top_by_throughput.is_empty() {
+            for user in &live.top_by_throughput {
+                if user.total_octets >= 1024_u64.pow(3) {
+                    alerts.push(format!(
+                        "traffic spike: {} ({})",
+                        user.username,
+                        format_bytes_human(user.total_octets)
+                    ));
+                }
+            }
+        }
+        if alerts.is_empty() {
+            lines.push("• Аномалии: не обнаружены".to_string());
+        } else {
+            lines.push(format!("• Аномалии: {}", alerts.join("; ")));
+        }
+    } else {
+        lines.push("• connections summary: нет данных".to_string());
+    }
 
     lines.push(String::new());
     lines.push("Недавняя активность:".to_string());
@@ -1064,12 +1135,17 @@ pub async fn admin_show_group_card(
     let n = state.db.count_group_members(group.id).await?;
     let created_line = format_timestamp(group.created_at);
     let exp_line = match group.expires_at {
-        Some(ts) => format!("\nОбщий срок группы (unix): {}", ts),
-        None => "\nОбщий срок группы: не задан (можно задать в БД или расширить UI позже)."
-            .to_string(),
+        Some(ts) => format!(
+            "\nОбщий срок группы: {}\nUnix timestamp: {}",
+            format_timestamp(ts),
+            ts
+        ),
+        None => "\nОбщий срок группы: не задан.".to_string(),
     };
     let text = format!(
         "📁 Группа: {}\nID: {}\nСоздана: {}\nУчастников: {}{}\n\n\
+         «Задать/изменить срок» обновит общий срок группы через UI.\n\
+         «Снять срок» очистит общий срок группы.\n\
          «Отключить всех» удалит пользователей из telemt и локальной БД, затем удалит группу.\n\
          «Применить срок» выставит всем участникам `expiration` из RFC3339, вычисленного из unix-срока группы.",
         group.name,

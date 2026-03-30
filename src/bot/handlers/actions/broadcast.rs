@@ -15,7 +15,10 @@ pub async fn broadcast_to_approved_users(
     let trimmed = text.trim();
     if trimmed.is_empty() {
         clear_wizard_state(state, admin_tg_user_id).await?;
-        bot.send_message(msg.chat.id, "Рассылка отменена (пустой текст).")
+        bot.send_message(
+            msg.chat.id,
+            state.config.bot_messages.broadcast_cancelled_or_default(),
+        )
             .await?;
         return Ok(());
     }
@@ -46,12 +49,10 @@ pub async fn broadcast_to_approved_users(
 
     bot.send_message(
         msg.chat.id,
-        format!(
-            "Рассылка завершена.\nУспешно: {}\nОшибок: {}\nВсего получателей в списке: {}",
-            ok,
-            failed,
-            ok + failed
-        ),
+        state
+            .config
+            .bot_messages
+            .broadcast_summary_text(ok, failed, ok + failed),
     )
     .await?;
     Ok(())

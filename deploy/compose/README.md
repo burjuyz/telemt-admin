@@ -16,7 +16,9 @@ cp .env.example .env
 1. Отредактируйте `config/telemt-admin.toml`: `bot_token`, `admin_ids`, при необходимости `telemt_api.auth_header` и `base_url`. При необходимости задайте в `.env` `TELEMT_ADMIN_VERSION` (по умолчанию в образ уходит тег `latest`). Если из контейнера недоступен `api.telegram.org`, задайте `TELEMT_ADMIN__BOT_USERNAME` (username без `@`).
 2. Внутри контейнера конфиг монтируется как `/etc/telemt-admin/telemt-admin.toml`.
 3. Режим `external` и метка `docker` для UI задаются в `docker-compose.yml` (`TELEMT_ADMIN__RUNTIME__MODE`, `TELEMT_ADMIN__RUNTIME__LABEL`), переопределять в TOML не требуется.
-4. Уровень логов — переменная `RUST_LOG` в `.env` (например `info` или `debug` для отладки).
+4. Для контейнерного API-only сценария оставляйте `allow_file_fallback = false`. Тогда `telemt-admin` не пытается писать `telemt.toml`, и отдельный RW mount для него не нужен.
+5. Если хотите использовать конфигурируемые тексты бота, добавьте секцию `[bot_messages]` или env `TELEMT_ADMIN__BOT_MESSAGES__*` прямо в TOML / `.env`.
+6. Уровень логов — переменная `RUST_LOG` в `.env` (например `info` или `debug` для отладки).
 
 Минимальный пример `config/telemt-admin.toml`:
 
@@ -34,6 +36,11 @@ auth_header = "Bearer ..."
 timeout_ms = 5000
 allow_file_fallback = false
 prefer_api_links = true
+
+[bot_messages]
+start_without_invite = "Привет. Бот работает в закрытом режиме."
+user_link_template = "Ваша ссылка:\n\n{link}"
+access_approved_template = "Доступ готов.\n\n{link}"
 ```
 
 Запуск:
@@ -55,3 +62,5 @@ docker image prune -f
 ```
 
 `telemt-admin` и `telemt` должны находиться в одной пользовательской сети Docker, если `telemt_api.base_url` указывает на имя контейнера. Для других схем используйте reachable host/IP, `host` network или `extra_hosts` по необходимости.
+
+Если позже потребуется legacy fallback с записью в `telemt.toml`, это уже отдельный write-path: нужно явно смонтировать общий файл/том в контейнер `telemt-admin` c правом записи и понимать, что текущий пример compose этого не делает.
