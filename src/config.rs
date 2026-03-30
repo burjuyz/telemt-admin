@@ -38,9 +38,47 @@ pub struct Config {
     /// Настройки уведомлений и фонового мониторинга
     #[serde(default)]
     pub notifications: NotificationsConfig,
+    /// Переопределяемые тексты бота (см. дефолты в коде)
+    #[serde(default)]
+    pub bot_messages: BotMessages,
     /// Режим управления процессом telemt на хосте (systemd / внешний supervisor / без unit)
     #[serde(default)]
     pub runtime: Option<RuntimeSection>,
+}
+
+/// Тексты интерфейса; пустые/отсутствующие поля — поведение по умолчанию (как в коде до настройки).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct BotMessages {
+    /// При `/start` без токена: показать этот текст и не включать автоматически wizard ввода токена.
+    #[serde(default)]
+    pub start_without_invite: Option<String>,
+    /// Сообщение при `/start` без токена и без `start_without_invite`: сразу запрос токена (wizard).
+    #[serde(default)]
+    pub invite_manual_prompt: Option<String>,
+    /// Текст после нажатия «Ввести invite-токен» (callback).
+    #[serde(default)]
+    pub invite_followup_prompt: Option<String>,
+}
+
+impl BotMessages {
+    pub fn invite_manual_prompt_or_default(&self) -> &str {
+        const DEFAULT: &str = "Введите пригласительный токен следующим сообщением.\n\nЕсли передумали, нажмите «Отмена».";
+        self.invite_manual_prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(DEFAULT)
+    }
+
+    pub fn invite_followup_prompt_or_default(&self) -> &str {
+        const DEFAULT: &str =
+            "Отправьте invite-токен следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.";
+        self.invite_followup_prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(DEFAULT)
+    }
 }
 
 /// Секция `[runtime]` в `telemt-admin.toml`.
@@ -317,5 +355,82 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        default_runtime_mode, BotMessages, Config, NotificationsConfig, RuntimeSection,
+        SecurityConfig, TelemtApiConfig,
+    };
+    use crate::runtime::RuntimeMode;
+    use std::path::PathBuf;
+
+    fn sample_config() -> Config {
+        Config {
+            bot_token: Some("token".to_string()),
+            bot_username: Some(" @TelemtAdmin ".to_string()),
+            admin_ids: vec![1],
+            telemt_config_path: PathBuf::from("/tmp/telemt.toml"),
+            db_path: PathBuf::from("/tmp/state.db"),
+            service_name: "telemt.service".to_string(),
+            users_page_size: 10,
+            security: SecurityConfig::default(),
+            telemt_api: TelemtApiConfig::default(),
+            notifications: NotificationsConfig::default(),
+            bot_messages: BotMessages::default(),
+            runtime: None,
+        }
+    }
+
+    #[test]
+    fn bot_messages_return_defaults_for_empty_values() {
+        let messages = BotMessages {
+            start_without_invite: None,
+            invite_manual_prompt: Some("   ".to_string()),
+            invite_followup_prompt: None,
+        };
+
+        assert!(messages.invite_manual_prompt_or_default().contains("Введите"));
+        assert!(messages.invite_followup_prompt_or_default().contains("invite-токен"));
+    }
+
+    #[test]
+    fn configured_bot_username_normalizes_input() {
+        let config = sample_config();
+
+        assert_eq!(config.configured_bot_username().as_deref(), Some("TelemtAdmin"));
+    }
+
+    #[test]
+    fn resolved_bot_username_prefers_config_over_get_me() {
+        let config = sample_config();
+
+        assert_eq!(
+            config.resolved_bot_username(Some("@AnotherBot".to_string())).as_deref(),
+            Some("TelemtAdmin")
+        );
+    }
+
+    #[test]
+    fn runtime_helpers_apply_defaults_and_trim_values() {
+        let mut config = sample_config();
+        assert_eq!(config.effective_runtime_mode(), default_runtime_mode());
+        assert_eq!(config.effective_systemd_unit(), "telemt.service");
+        assert_eq!(config.effective_external_label(), None);
+
+        config.runtime = Some(RuntimeSection {
+            mode: RuntimeMode::External,
+            service_name: Some(" custom.service ".to_string()),
+            label: Some(" external supervisor ".to_string()),
+        });
+
+        assert_eq!(config.effective_runtime_mode(), RuntimeMode::External);
+        assert_eq!(config.effective_systemd_unit(), "custom.service");
+        assert_eq!(
+            config.effective_external_label().as_deref(),
+            Some("external supervisor")
+        );
     }
 }

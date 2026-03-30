@@ -668,12 +668,16 @@ pub async fn show_pending_request_card(
     request: &crate::db::RegistrationRequest,
     page: i64,
 ) -> HandlerResult {
+    let invite_line = request
+        .invite_token_id
+        .map(|id| format!("\n🎟 ID ссылки (invite): {}", id))
+        .unwrap_or_default();
     let text = format!(
         "📋 Заявка #{}\n\n\
          👤 {}\n\
          🆔 {}\n\
          📱 {}\n\
-         📅 {}",
+         📅 {}{}",
         request.id,
         user_display_name(request),
         request.tg_user_id,
@@ -683,6 +687,7 @@ pub async fn show_pending_request_card(
             .map(|username| format!("@{}", username))
             .unwrap_or_else(|| "—".to_string()),
         format_timestamp(request.created_at),
+        invite_line,
     );
     bot.edit_message_text(chat_id, message_id, text)
         .reply_markup(crate::bot::keyboards::pending_request_card_keyboard(
@@ -901,16 +906,17 @@ pub async fn send_user_qr_to_admin(
     user: &crate::db::RegistrationRequest,
     state: &BotState,
 ) -> Result<(), anyhow::Error> {
-    let Some(secret) = user.secret.as_deref() else {
-        return Err(anyhow::anyhow!("Не найден секрет пользователя"));
-    };
     let Some(telemt_username) = user.telemt_username.as_deref() else {
         return Err(anyhow::anyhow!("Не найден telemt username пользователя"));
     };
 
+    let secret_opt = user
+        .secret
+        .as_deref()
+        .filter(|s| !s.is_empty());
     let link = state
         .telemt_backend
-        .build_user_link(telemt_username, Some(secret))
+        .build_user_link(telemt_username, secret_opt)
         .await?;
     let qr_png = build_user_qr_png_bytes(&link)?;
     let caption = format!(
@@ -1022,6 +1028,62 @@ pub async fn admin_show_connections_summary_screen(
         message_id,
         render_connections_summary_text(summary.as_ref(), summary_error.as_deref()),
         crate::bot::keyboards::connections_summary_keyboard(),
+    )
+    .await
+}
+
+pub async fn admin_show_groups_menu(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+) -> HandlerResult {
+    let groups = state.db.list_user_groups().await?;
+    let text = if groups.is_empty() {
+        "📁 Группы пользователей\n\nПока нет ни одной группы. Нажмите «Новая группа».".to_string()
+    } else {
+        "📁 Группы пользователей\n\nВыберите группу или создайте новую.".to_string()
+    };
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::groups_menu_keyboard(&groups),
+    )
+    .await
+}
+
+pub async fn admin_show_group_card(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+    group: &crate::db::UserGroup,
+) -> HandlerResult {
+    let n = state.db.count_group_members(group.id).await?;
+    let created_line = format_timestamp(group.created_at);
+    let exp_line = match group.expires_at {
+        Some(ts) => format!("\nОбщий срок группы (unix): {}", ts),
+        None => "\nОбщий срок группы: не задан (можно задать в БД или расширить UI позже)."
+            .to_string(),
+    };
+    let text = format!(
+        "📁 Группа: {}\nID: {}\nСоздана: {}\nУчастников: {}{}\n\n\
+         «Отключить всех» удалит пользователей из telemt и локальной БД, затем удалит группу.\n\
+         «Применить срок» выставит всем участникам `expiration` из RFC3339, вычисленного из unix-срока группы.",
+        group.name,
+        group.id,
+        created_line,
+        n,
+        exp_line
+    );
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::group_card_keyboard(group.id),
     )
     .await
 }

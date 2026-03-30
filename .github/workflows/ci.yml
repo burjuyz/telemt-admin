@@ -15,7 +15,7 @@ env:
 
 jobs:
   rust-checks:
-    name: Cargo Check And Clippy
+    name: Cargo Test Check And Clippy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,6 +28,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+
+      - name: Cargo test
+        run: cargo test --locked
 
       - name: Cargo check
         run: cargo check --locked

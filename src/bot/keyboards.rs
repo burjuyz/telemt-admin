@@ -105,11 +105,96 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
             InlineKeyboardButton::callback("🎟 Токены", CallbackAction::ShowTokenMenu.encode()),
             InlineKeyboardButton::callback("⚙️ Сервис", CallbackAction::ShowServicePanel.encode()),
         ],
+        vec![
+            InlineKeyboardButton::callback(
+                "📊 Статистика",
+                CallbackAction::ShowStats.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "📢 Рассылка",
+                CallbackAction::PromptBroadcastApproved.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "📁 Группы",
+                CallbackAction::ShowGroupsMenu.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "📥 Импорт из telemt",
+                CallbackAction::PromptImportUser.encode(),
+            ),
+        ],
+    ])
+}
+
+pub fn groups_menu_keyboard(groups: &[crate::db::UserGroup]) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    for g in groups {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("📁 {}", g.name),
+            CallbackAction::OpenGroupCard { group_id: g.id }.encode(),
+        )]);
+    }
+    rows.push(vec![InlineKeyboardButton::callback(
+        "➕ Новая группа",
+        CallbackAction::PromptCreateGroup.encode(),
+    )]);
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ Админка",
+        CallbackAction::ShowAdminHome.encode(),
+    )]);
+    InlineKeyboardMarkup::new(rows)
+}
+
+pub fn group_card_keyboard(group_id: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
         vec![InlineKeyboardButton::callback(
-            "📊 Статистика",
-            CallbackAction::ShowStats.encode(),
+            "⛔ Отключить всех",
+            CallbackAction::GroupDeactivateAll { group_id }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "📅 Применить срок группы ко всем",
+            CallbackAction::GroupApplyExpiry { group_id }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ К группам",
+            CallbackAction::ShowGroupsMenu.encode(),
         )],
     ])
+}
+
+pub fn user_group_picker_keyboard(
+    tg_user_id: i64,
+    page: i64,
+    groups: &[crate::db::UserGroup],
+) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⛔ Не в группе",
+        CallbackAction::AssignUserToGroup {
+            tg_user_id,
+            group_id: 0,
+            page,
+        }
+        .encode(),
+    )]);
+    for g in groups {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("📁 {}", g.name),
+            CallbackAction::AssignUserToGroup {
+                tg_user_id,
+                group_id: g.id,
+                page,
+            }
+            .encode(),
+        )]);
+    }
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ К карточке",
+        CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
+    )]);
+    InlineKeyboardMarkup::new(rows)
 }
 
 pub fn pending_requests_keyboard(
@@ -297,6 +382,10 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
                 CallbackAction::SendUserStartLink { tg_user_id }.encode(),
             ),
         ])
+        .append_row(vec![InlineKeyboardButton::callback(
+            "📁 Группа",
+            CallbackAction::UserGroupPicker { tg_user_id, page }.encode(),
+        )])
         .append_row(vec![InlineKeyboardButton::callback(
             "🔗 Данные + QR",
             CallbackAction::ViewUserQr { tg_user_id }.encode(),

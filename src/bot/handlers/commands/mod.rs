@@ -270,10 +270,25 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
         }
     }
 
+    if let Some(stub) = state
+        .config
+        .bot_messages
+        .start_without_invite
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        clear_wizard_state(&state, user_id).await?;
+        bot.send_message(msg.chat.id, stub)
+            .reply_markup(crate::bot::keyboards::user_home_keyboard())
+            .await?;
+        return Ok(());
+    }
+
     set_wizard_state(&state, user_id, WizardState::AwaitingInviteToken).await?;
     bot.send_message(
         msg.chat.id,
-        "Введите пригласительный токен следующим сообщением.\n\nЕсли передумали, нажмите «Отмена».",
+        state.config.bot_messages.invite_manual_prompt_or_default(),
     )
     .reply_markup(crate::bot::keyboards::cancel_keyboard(
         CallbackAction::ShowUserHome,

@@ -48,6 +48,8 @@ impl Db {
             .await?;
         self.ensure_column_exists("registration_requests", "last_synced_at", "INTEGER")
             .await?;
+        self.ensure_column_exists("registration_requests", "invite_token_id", "INTEGER")
+            .await?;
 
         sqlx::query(
             r#"
@@ -93,6 +95,26 @@ impl Db {
         .await
         .map_err(|e| anyhow::anyhow!("Миграция bot_wizard_states: {}", e))?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS user_group_members (
+                tg_user_id INTEGER PRIMARY KEY,
+                group_id INTEGER NOT NULL,
+                joined_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_group_members_group ON user_group_members(group_id);
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Миграция user_groups: {}", e))?;
+
         Ok(())
     }
 
@@ -116,6 +138,37 @@ impl Db {
             .execute(&self.pool)
             .await?;
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::test_support::TestDb;
+
+    #[tokio::test]
+    async fn migrations_create_expected_columns() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+
+        let request_columns = sqlx::query_scalar::<_, String>(
+            "SELECT name FROM pragma_table_info('registration_requests') ORDER BY name",
+        )
+        .fetch_all(&fixture.db.pool)
+        .await?;
+        let invite_columns = sqlx::query_scalar::<_, String>(
+            "SELECT name FROM pragma_table_info('invite_tokens') ORDER BY name",
+        )
+        .fetch_all(&fixture.db.pool)
+        .await?;
+
+        assert!(request_columns.iter().any(|name| name == "backend_mode"));
+        assert!(request_columns.iter().any(|name| name == "last_sync_error"));
+        assert!(request_columns.iter().any(|name| name == "last_seen_revision"));
+        assert!(request_columns.iter().any(|name| name == "last_synced_at"));
+        assert!(request_columns.iter().any(|name| name == "invite_token_id"));
+        assert!(invite_columns.iter().any(|name| name == "max_usage"));
+        assert!(invite_columns.iter().any(|name| name == "is_active"));
+        assert!(invite_columns.iter().any(|name| name == "revoked_at"));
         Ok(())
     }
 }

@@ -16,6 +16,13 @@
 
 Переменные `TELEMT_ADMIN__*` (whitelist) применяются после TOML и удобны для Compose; см. `docs/adr/004-config-sources-and-docker-defaults.md`.
 
+## Группы, рассылка, импорт и тексты бота
+
+- **Группы**: таблицы `user_groups` и `user_group_members`; опциональный общий срок группы — `user_groups.expires_at` (unix). Кнопка «Применить срок группы ко всем» выполняет PATCH `expiration` для участников (нужен включённый `[telemt_api]`).
+- **Рассылка**: одно сообщение всем пользователям со статусом `approved`; учитывайте лимиты Telegram и то, что бот не доставит сообщение пользователям, которые ни разу не взаимодействовали с ботом.
+- **Импорт из telemt**: по числовому Telegram user id, только при `telemt_api.enabled`; локальная запись создаётся без сохранённого секрета (ссылки строятся через control API при `prefer_api_links` и т.п.).
+- **Тексты**: секция `[bot_messages]` и env `TELEMT_ADMIN__BOT_MESSAGES__*` (см. `src/config.rs`).
+
 ## Предусловия
 
 На стороне `telemt`:

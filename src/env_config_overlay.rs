@@ -137,6 +137,21 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__NOTIFICATIONS__NOTIFY_ON_NEW_REQUEST".to_string());
     }
 
+    if let Some(v) = read_nonempty("BOT_MESSAGES__START_WITHOUT_INVITE") {
+        config.bot_messages.start_without_invite = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__START_WITHOUT_INVITE".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__INVITE_MANUAL_PROMPT") {
+        config.bot_messages.invite_manual_prompt = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__INVITE_MANUAL_PROMPT".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__INVITE_FOLLOWUP_PROMPT") {
+        config.bot_messages.invite_followup_prompt = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__INVITE_FOLLOWUP_PROMPT".to_string());
+    }
+
     Ok(applied)
 }
 
@@ -192,5 +207,35 @@ fn default_runtime_section() -> crate::config::RuntimeSection {
         mode: RuntimeMode::Systemd,
         service_name: None,
         label: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_admin_ids, parse_bool, parse_runtime_mode};
+    use crate::runtime::RuntimeMode;
+
+    #[test]
+    fn parse_bool_accepts_common_truthy_and_falsy_values() {
+        assert_eq!(parse_bool("true").ok(), Some(true));
+        assert_eq!(parse_bool("YES").ok(), Some(true));
+        assert_eq!(parse_bool("0").ok(), Some(false));
+        assert_eq!(parse_bool("off").ok(), Some(false));
+        assert!(parse_bool("maybe").is_err());
+    }
+
+    #[test]
+    fn parse_admin_ids_trims_and_requires_at_least_one_value() {
+        assert_eq!(parse_admin_ids("1, 2,3").ok(), Some(vec![1, 2, 3]));
+        assert!(parse_admin_ids(" , ").is_err());
+        assert!(parse_admin_ids("1, nope").is_err());
+    }
+
+    #[test]
+    fn parse_runtime_mode_accepts_known_variants() {
+        assert_eq!(parse_runtime_mode("systemd").ok(), Some(RuntimeMode::Systemd));
+        assert_eq!(parse_runtime_mode("external").ok(), Some(RuntimeMode::External));
+        assert_eq!(parse_runtime_mode("none").ok(), Some(RuntimeMode::None));
+        assert!(parse_runtime_mode("docker").is_err());
     }
 }

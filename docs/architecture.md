@@ -3,13 +3,14 @@
 Основные модули:
 
 - `src/main.rs` — инициализация конфига, БД, состояния бота и `Dispatcher`.
-- `src/config.rs` — загрузка `telemt-admin.toml`, дефолты и валидация.
+- `src/config.rs` — загрузка `telemt-admin.toml`, дефолты и валидация (в т.ч. `[bot_messages]`).
 - `src/env_config_overlay.rs` — whitelist overrides `TELEMT_ADMIN__*` поверх TOML.
 - `src/monitor.rs` — фоновый polling `telemt` control API и push-уведомления администраторам.
 - `src/db.rs` — корневой модуль SQLite-слоя с общими типами и публичным API.
 - `src/db/migrations.rs` — мягкие миграции схемы и bootstrap БД.
 - `src/db/registration.rs` — заявки, пользователи и переходы `pending/approved/rejected/deleted`.
 - `src/db/invite_tokens.rs` — invite-токены, consume/revoke и проверки активного токена.
+- `src/db/user_groups.rs` — группы пользователей и членство (`user_groups`, `user_group_members`).
 - `src/db/admin.rs` — агрегаты админки и структурированные события активности.
 - `src/db/wizard_state.rs` — хранение wizard-state и TTL cleanup.
 - `src/telemt_cfg.rs` — legacy-адаптер для чтения и изменения `telemt.toml`; блокирующий файловый I/O должен выполняться через offload, а не напрямую в async bot flow.

@@ -186,12 +186,17 @@ pub fn render_user_card_text(
     let links_count = runtime_info
         .map(|info| info.links.len().to_string())
         .unwrap_or_else(|| "0".to_string());
+    let invite_token_id = user
+        .invite_token_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "—".to_string());
 
     format!(
         "👤 {}\n\n\
          🆔 {}\n\
          📱 {}\n\
          📋 статус: {}\n\
+         🎟 ID ссылки (invite): {}\n\
          🔗 telemt: {}\n\
          🧩 backend: {}\n\
          🔁 sync: {}\n\
@@ -216,6 +221,7 @@ pub fn render_user_card_text(
         user.tg_user_id,
         username,
         user.status,
+        invite_token_id,
         telemt,
         backend_mode,
         last_sync,
@@ -247,4 +253,122 @@ pub fn usage_guide_text() -> &'static str {
 
 Если доступа ещё нет, начните с /start и введите invite-токен.
 Если не получается, обратитесь к администратору."#
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        format_bytes_human, render_invite_token_button_title, render_user_card_text,
+        usage_guide_text, user_display_name,
+    };
+    use crate::db::{InviteToken, RegistrationRequest, RequestStatus};
+    use crate::telemt_backend::{TelemtBackendMode, TelemtUserInfo};
+
+    fn sample_request() -> RegistrationRequest {
+        RegistrationRequest {
+            id: 1,
+            tg_user_id: 42,
+            tg_username: Some("alice".to_string()),
+            tg_display_name: Some("Alice".to_string()),
+            status: RequestStatus::Approved,
+            telemt_username: Some("tg_42".to_string()),
+            secret: Some("secret".to_string()),
+            created_at: 1_700_000_000,
+            backend_mode: Some("control_api".to_string()),
+            last_sync_error: None,
+            last_seen_revision: Some("rev-123".to_string()),
+            last_synced_at: Some(1_700_000_100),
+            invite_token_id: Some(7),
+        }
+    }
+
+    fn sample_runtime_info() -> TelemtUserInfo {
+        TelemtUserInfo {
+            source: TelemtBackendMode::ControlApi,
+            user_ad_tag: Some("promo".to_string()),
+            max_tcp_conns: Some(10),
+            expiration_rfc3339: Some("2026-04-01T00:00:00Z".to_string()),
+            data_quota_bytes: Some(4096),
+            max_unique_ips: Some(3),
+            current_connections: Some(2),
+            active_unique_ips: Some(1),
+            active_unique_ips_list: vec!["1.1.1.1".to_string()],
+            recent_unique_ips: Some(2),
+            recent_unique_ips_list: vec!["1.1.1.1".to_string(), "2.2.2.2".to_string()],
+            total_octets: Some(8192),
+            links: vec!["link-1".to_string(), "link-2".to_string()],
+        }
+    }
+
+    #[test]
+    fn user_display_name_prefers_display_name_then_username_then_telemt() {
+        let request = sample_request();
+        assert_eq!(user_display_name(&request), "Alice");
+
+        let mut no_display = sample_request();
+        no_display.tg_display_name = None;
+        assert_eq!(user_display_name(&no_display), "@alice");
+
+        let mut no_username = sample_request();
+        no_username.tg_display_name = None;
+        no_username.tg_username = None;
+        assert_eq!(user_display_name(&no_username), "tg_42");
+    }
+
+    #[test]
+    fn render_invite_token_button_title_contains_mode_and_date() {
+        let token = InviteToken {
+            id: 1,
+            token: "TOKEN123".to_string(),
+            created_at: 1_700_000_000,
+            expires_at: 1_800_000_000,
+            auto_approve: true,
+            created_by: Some(7),
+            usage_count: 1,
+            max_usage: Some(5),
+            is_active: true,
+        };
+
+        let title = render_invite_token_button_title(&token);
+
+        assert!(title.contains("TOKEN123"));
+        assert!(title.contains("AUTO"));
+        assert!(title.contains("до "));
+    }
+
+    #[test]
+    fn format_bytes_human_formats_thresholds() {
+        assert_eq!(format_bytes_human(512), "512 B");
+        assert_eq!(format_bytes_human(2048), "2.00 KB");
+        assert_eq!(format_bytes_human(5 * 1024 * 1024), "5.00 MB");
+    }
+
+    #[test]
+    fn render_user_card_text_includes_runtime_and_sync_data() {
+        let text = render_user_card_text(&sample_request(), Some(&sample_runtime_info()));
+
+        assert!(text.contains("Alice"));
+        assert!(text.contains("control_api"));
+        assert!(text.contains("runtime source: control_api"));
+        assert!(text.contains("live connections: 2"));
+        assert!(text.contains("links: 2"));
+        assert!(text.contains("sync error: нет"));
+        assert!(text.contains("ID ссылки (invite): 7"));
+    }
+
+    #[test]
+    fn render_user_card_text_shows_dash_when_no_invite_token_id() {
+        let mut req = sample_request();
+        req.invite_token_id = None;
+        let text = render_user_card_text(&req, None);
+        assert!(text.contains("ID ссылки (invite): —"));
+    }
+
+    #[test]
+    fn usage_guide_text_mentions_start_and_link() {
+        let text = usage_guide_text();
+
+        assert!(text.contains("/start"));
+        assert!(text.contains("/link"));
+    }
 }

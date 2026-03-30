@@ -18,6 +18,12 @@ pub enum WizardState {
     },
     AdminFindTokenAwaitingCode { page: i64 },
     AdminTokenCreateAwaitingParams { auto_approve: bool },
+    /// Ожидание текста рассылки всем approved-пользователям.
+    AdminBroadcastAwaitingMessage,
+    /// Название новой группы пользователей.
+    AdminGroupAwaitingName,
+    /// Telegram user id для импорта из telemt API.
+    AdminImportAwaitingTgId,
 }
 
 impl WizardState {
@@ -47,6 +53,9 @@ impl WizardState {
                     if *auto_approve { "auto" } else { "manual" }
                 )
             }
+            Self::AdminBroadcastAwaitingMessage => "admin_broadcast_awaiting".to_string(),
+            Self::AdminGroupAwaitingName => "admin_group_awaiting_name".to_string(),
+            Self::AdminImportAwaitingTgId => "admin_import_awaiting_tg_id".to_string(),
         }
     }
 
@@ -60,6 +69,9 @@ impl WizardState {
             "admin_token_create:manual" => Some(Self::AdminTokenCreateAwaitingParams {
                 auto_approve: false,
             }),
+            "admin_broadcast_awaiting" => Some(Self::AdminBroadcastAwaitingMessage),
+            "admin_group_awaiting_name" => Some(Self::AdminGroupAwaitingName),
+            "admin_import_awaiting_tg_id" => Some(Self::AdminImportAwaitingTgId),
             _ => {
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {

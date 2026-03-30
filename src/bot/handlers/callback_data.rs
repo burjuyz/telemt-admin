@@ -101,6 +101,20 @@ pub enum CallbackAction {
     ExecuteDeleteUser { tg_user_id: i64 },
     ApproveRequest { request_id: i64, page: i64 },
     RejectRequest { request_id: i64, page: i64 },
+    /// Рассылка сообщения всем пользователям со статусом approved.
+    PromptBroadcastApproved,
+    ShowGroupsMenu,
+    OpenGroupCard { group_id: i64 },
+    PromptCreateGroup,
+    GroupDeactivateAll { group_id: i64 },
+    GroupApplyExpiry { group_id: i64 },
+    UserGroupPicker { tg_user_id: i64, page: i64 },
+    AssignUserToGroup {
+        tg_user_id: i64,
+        group_id: i64,
+        page: i64,
+    },
+    PromptImportUser,
 }
 
 impl CallbackAction {
@@ -177,6 +191,25 @@ impl CallbackAction {
             Self::RejectRequest { request_id, page } => {
                 format!("v1|req|reject|{request_id}|{page}")
             }
+            Self::PromptBroadcastApproved => "v1|admin|broadcast".to_string(),
+            Self::ShowGroupsMenu => "v1|admin|groups".to_string(),
+            Self::OpenGroupCard { group_id } => format!("v1|admin|groups|open|{group_id}"),
+            Self::PromptCreateGroup => "v1|admin|groups|create".to_string(),
+            Self::GroupDeactivateAll { group_id } => {
+                format!("v1|admin|groups|deactivate|{group_id}")
+            },
+            Self::GroupApplyExpiry { group_id } => {
+                format!("v1|admin|groups|apply_expiry|{group_id}")
+            },
+            Self::UserGroupPicker { tg_user_id, page } => {
+                format!("v1|admin|user|group|pick|{tg_user_id}|{page}")
+            }
+            Self::AssignUserToGroup {
+                tg_user_id,
+                group_id,
+                page,
+            } => format!("v1|admin|user|group|set|{tg_user_id}|{group_id}|{page}"),
+            Self::PromptImportUser => "v1|admin|import".to_string(),
         }
     }
 
@@ -290,6 +323,32 @@ impl CallbackAction {
                 request_id: parse_i64(request_id)?,
                 page: parse_i64(page)?.max(1),
             }),
+            ["v1", "admin", "broadcast"] => Some(Self::PromptBroadcastApproved),
+            ["v1", "admin", "groups"] => Some(Self::ShowGroupsMenu),
+            ["v1", "admin", "groups", "open", group_id] => Some(Self::OpenGroupCard {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "groups", "create"] => Some(Self::PromptCreateGroup),
+            ["v1", "admin", "groups", "deactivate", group_id] => Some(Self::GroupDeactivateAll {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "groups", "apply_expiry", group_id] => Some(Self::GroupApplyExpiry {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "user", "group", "pick", tg_user_id, page] => {
+                Some(Self::UserGroupPicker {
+                    tg_user_id: parse_i64(tg_user_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            },
+            ["v1", "admin", "user", "group", "set", tg_user_id, group_id, page] => {
+                Some(Self::AssignUserToGroup {
+                    tg_user_id: parse_i64(tg_user_id)?,
+                    group_id: parse_i64(group_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            },
+            ["v1", "admin", "import"] => Some(Self::PromptImportUser),
             _ => None,
         }
     }
@@ -297,4 +356,115 @@ impl CallbackAction {
 
 fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CallbackAction, ServiceAction, UserLimitField};
+
+    #[test]
+    fn service_action_parse_accepts_known_values() {
+        assert_eq!(ServiceAction::parse("start"), Some(ServiceAction::Start));
+        assert_eq!(ServiceAction::parse("stop"), Some(ServiceAction::Stop));
+        assert_eq!(ServiceAction::parse("restart"), Some(ServiceAction::Restart));
+        assert_eq!(ServiceAction::parse("reload"), Some(ServiceAction::Reload));
+        assert_eq!(ServiceAction::parse("status"), Some(ServiceAction::Status));
+        assert_eq!(ServiceAction::parse("unknown"), None);
+    }
+
+    #[test]
+    fn user_limit_field_parse_accepts_known_values() {
+        assert_eq!(
+            UserLimitField::parse("tcp"),
+            Some(UserLimitField::MaxTcpConns)
+        );
+        assert_eq!(
+            UserLimitField::parse("quota"),
+            Some(UserLimitField::DataQuotaBytes)
+        );
+        assert_eq!(
+            UserLimitField::parse("ips"),
+            Some(UserLimitField::MaxUniqueIps)
+        );
+        assert_eq!(
+            UserLimitField::parse("expire"),
+            Some(UserLimitField::Expiration)
+        );
+        assert_eq!(UserLimitField::parse("bad"), None);
+    }
+
+    #[test]
+    fn callback_action_roundtrip_preserves_payload() {
+        let cases = [
+            CallbackAction::Noop,
+            CallbackAction::ShowPendingRequestsPage { page: 3 },
+            CallbackAction::OpenPendingRequest {
+                request_id: 42,
+                page: 2,
+            },
+            CallbackAction::PromptUserLimit {
+                tg_user_id: 1001,
+                page: 4,
+                field: UserLimitField::DataQuotaBytes,
+            },
+            CallbackAction::ConfirmServiceAction {
+                action: ServiceAction::Reload,
+            },
+            CallbackAction::PromptTokenCreate { auto_approve: true },
+            CallbackAction::OpenTokenCard {
+                token_id: 55,
+                page: 7,
+            },
+            CallbackAction::AssignUserToGroup {
+                tg_user_id: 12,
+                group_id: 99,
+                page: 5,
+            },
+            CallbackAction::ShowGroupsMenu,
+            CallbackAction::OpenGroupCard { group_id: 7 },
+            CallbackAction::PromptCreateGroup,
+            CallbackAction::GroupDeactivateAll { group_id: 3 },
+            CallbackAction::GroupApplyExpiry { group_id: 4 },
+            CallbackAction::UserGroupPicker {
+                tg_user_id: 100,
+                page: 2,
+            },
+            CallbackAction::AssignUserToGroup {
+                tg_user_id: 12,
+                group_id: 0,
+                page: 1,
+            },
+            CallbackAction::PromptImportUser,
+            CallbackAction::PromptBroadcastApproved,
+        ];
+
+        for case in cases {
+            let encoded = case.encode();
+            assert_eq!(CallbackAction::decode(&encoded), Some(case));
+        }
+    }
+
+    #[test]
+    fn decode_clamps_page_to_one() {
+        assert_eq!(
+            CallbackAction::decode("v1|admin|pending|page|0"),
+            Some(CallbackAction::ShowPendingRequestsPage { page: 1 })
+        );
+        assert_eq!(
+            CallbackAction::decode("v1|admin|user|open|12|-9"),
+            Some(CallbackAction::OpenUserCard {
+                tg_user_id: 12,
+                page: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn decode_rejects_invalid_payloads() {
+        assert_eq!(CallbackAction::decode("v1|admin|service|confirm|bad"), None);
+        assert_eq!(CallbackAction::decode("v1|admin|user|limit|bad|1|2"), None);
+        assert_eq!(CallbackAction::decode("v1|admin|pending|open|abc|2"), None);
+        assert_eq!(CallbackAction::decode("v2|admin|home"), None);
+        assert_eq!(CallbackAction::decode("garbage"), None);
+    }
 }

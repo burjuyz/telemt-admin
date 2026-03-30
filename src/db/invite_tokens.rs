@@ -239,4 +239,159 @@ impl Db {
             max_usage: row.max_usage,
         })
     }
+
+    /// Проверяет токен без увеличения `usage_count` (для уже одобренных пользователей по ссылке).
+    /// Лимит использований не учитывается: повторный переход не должен «съедать» квоту.
+    pub async fn peek_invite_token_for_existing_user(
+        &self,
+        token: &str,
+    ) -> Result<InviteToken, TokenConsumeError> {
+        let now = current_unix_timestamp()
+            .map_err(|err| map_internal_token_error("Не удалось получить текущее время", err))?;
+        let row = sqlx::query_as::<_, InviteToken>(&format!(
+            "{SELECT_INVITE_TOKEN}
+             WHERE token = ?
+             LIMIT 1"
+        ))
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|err| {
+            map_internal_token_error("Не удалось загрузить invite-токен (peek)", err)
+        })?;
+
+        let Some(row) = row else {
+            return Err(TokenConsumeError::NotFound);
+        };
+        if !row.is_active {
+            return Err(TokenConsumeError::Revoked);
+        }
+        if row.expires_at <= now {
+            return Err(TokenConsumeError::Expired);
+        }
+        Ok(row)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_support::TestDb;
+
+    #[tokio::test]
+    async fn create_invite_token_persists_active_token() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+
+        let token = fixture
+            .db
+            .create_invite_token(7, true, Some(3), Some(77))
+            .await?;
+
+        assert_eq!(token.created_by, Some(77));
+        assert_eq!(token.max_usage, Some(3));
+        assert!(token.auto_approve);
+        assert!(token.is_active);
+        assert_eq!(token.token.len(), 10);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn consume_invite_token_increments_usage_count() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+        let token = fixture
+            .db
+            .create_invite_token(7, false, Some(2), Some(1))
+            .await?;
+
+        let consumed = fixture.db.consume_invite_token(&token.token).await?;
+
+        assert_eq!(consumed.id, token.id);
+        assert!(matches!(consumed.mode, TokenMode::Manual));
+        assert_eq!(consumed.usage_count, 1);
+
+        let stored = fixture
+            .db
+            .get_active_invite_token_by_token(&token.token)
+            .await?
+            .unwrap();
+        assert_eq!(stored.usage_count, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn consume_invite_token_returns_usage_limit_reached() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+        let token = fixture
+            .db
+            .create_invite_token(7, false, Some(1), None)
+            .await?;
+        fixture.db.consume_invite_token(&token.token).await?;
+
+        let result = fixture.db.consume_invite_token(&token.token).await;
+
+        assert!(matches!(result, Err(TokenConsumeError::UsageLimitReached)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_token_deactivates_token() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+        let token = fixture
+            .db
+            .create_invite_token(7, false, None, None)
+            .await?;
+
+        assert!(fixture.db.revoke_invite_token_by_id(token.id).await?);
+        assert!(fixture.db.get_active_invite_token_by_id(token.id).await?.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn peek_invite_token_does_not_increment_usage() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+        let token = fixture
+            .db
+            .create_invite_token(7, true, Some(5), None)
+            .await?;
+
+        let peeked = fixture
+            .db
+            .peek_invite_token_for_existing_user(&token.token)
+            .await?;
+
+        assert_eq!(peeked.id, token.id);
+        let stored = fixture
+            .db
+            .get_active_invite_token_by_token(&token.token)
+            .await?
+            .unwrap();
+        assert_eq!(stored.usage_count, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn peek_invite_token_succeeds_when_usage_exhausted_for_consume() -> Result<(), anyhow::Error> {
+        let fixture = TestDb::new().await?;
+        let token = fixture
+            .db
+            .create_invite_token(7, false, Some(1), None)
+            .await?;
+        fixture.db.consume_invite_token(&token.token).await?;
+
+        assert!(
+            fixture
+                .db
+                .get_active_invite_token_by_token(&token.token)
+                .await?
+                .is_none()
+        );
+
+        let peeked = fixture
+            .db
+            .peek_invite_token_for_existing_user(&token.token)
+            .await?;
+        assert_eq!(peeked.id, token.id);
+        assert_eq!(peeked.usage_count, 1);
+        Ok(())
+    }
 }

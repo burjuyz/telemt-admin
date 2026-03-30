@@ -3,6 +3,7 @@
 Локальная проверка после заметных изменений:
 
 ```bash
+cargo test --locked
 cargo check --locked
 cargo clippy --all-targets -- -D warnings
 ```
@@ -15,7 +16,7 @@ cargo check
 
 CI/CD:
 
-- `.github/workflows/ci.yml` проверяет `cargo check --locked` и `cargo clippy --all-targets -- -D warnings`;
+- `.github/workflows/ci.yml` проверяет `cargo test --locked`, `cargo check --locked` и `cargo clippy --all-targets -- -D warnings`;
 - `.github/workflows/release.yml` собирает релизы для Linux и Windows по тегам `v*.*.*` и публикует Docker-образ в GHCR (`ghcr.io/<owner>/telemt-admin`);
 - release workflow не дублирует `clippy`, а предполагает, что релизный тег создаётся поверх кода, уже прошедшего основной CI;
 - changelog формируется через `git-cliff` и Conventional Commits.
@@ -26,7 +27,8 @@ CI/CD:
 Конвенции:
 
 - предпочтительный стиль коммитов: `feat:`, `fix:`, `refactor:`, `docs:` и т.д.;
-- не писать тесты без явного запроса;
+- для покрытого тестами кода, критичной доменной логики и bugfix-путей придерживаться поэтапного TDD: сначала тест, затем минимальная реализация, затем рефакторинг;
+- не писать шумовые тесты без пользы и не тащить e2e туда, где достаточно unit/integration уровня;
 - не добавлять зависимости без явной необходимости;
 - не использовать `unwrap()` там, где ошибка может быть штатной или внешней;
 - если меняются архитектурные границы или модульная структура, синхронно обновлять `docs/*` и `.cursor/rules/*` в той же серии изменений;
@@ -34,6 +36,7 @@ CI/CD:
 - если меняется эксплуатационное поведение control API, синхронно обновлять `docs/runbook.md`;
 - если меняются notifications, health/runtime alerts или фоновый polling, синхронно обновлять `README.md`, `docs/overview.md`, `docs/architecture.md` и `docs/runbook.md`;
 - при изменениях bot UX проверять вручную wizard-flow, основные inline-экраны и восстановление wizard-state после рестарта.
+- unit-тесты в первую очередь писать для чистых helper-функций, мапперов, парсеров callback payload и форматирования; integration-тесты — для SQLite-слоя и миграций.
 - если меняются `telemt_cfg`, legacy fallback или self-update, синхронно проверять, что блокирующий файловый I/O остаётся вынесенным из async executor и что ограничения по atomic write/offload отражены в docs.
 
 Навигация по документации:

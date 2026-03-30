@@ -1,10 +1,11 @@
 use crate::bot::handlers::callback_data::UserLimitField;
 use crate::bot::handlers::format::user_display_name;
 use crate::bot::handlers::shared::build_bot_start_link;
+use crate::bot::handlers::state::{BotState, telemt_username};
 use crate::bot::keyboards::user_lookup_candidates_keyboard;
 use crate::bot::handlers::screens::{show_delete_user_confirm, show_user_card_screen};
-use crate::bot::handlers::state::BotState;
 use crate::db::RegistrationRequest;
+use crate::telemt_backend::TelemtBackendMode;
 use chrono::{Duration, NaiveDate, Utc};
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Requester};
@@ -78,9 +79,10 @@ async fn load_runtime_info(
     user: &RegistrationRequest,
 ) -> Option<crate::telemt_backend::TelemtUserInfo> {
     let telemt_username = user.telemt_username.as_deref()?;
+    let secret_opt = user.secret.as_deref().filter(|s| !s.is_empty());
     match state
         .telemt_backend
-        .get_user_info(telemt_username, user.secret.as_deref())
+        .get_user_info(telemt_username, secret_opt)
         .await
     {
         Ok(info) => info,
@@ -424,4 +426,46 @@ pub async fn send_token_start_link(
     )
     .await?;
     Ok(())
+}
+
+/// Импортировать пользователя `tg_<id>`, уже существующего в telemt API, в локальную БД.
+pub async fn import_remote_user_by_tg_id(
+    state: &BotState,
+    tg_user_id: i64,
+) -> Result<String, anyhow::Error> {
+    if !state.config.telemt_api.enabled {
+        return Err(anyhow::anyhow!(
+            "Импорт из telemt доступен только при включённом control API (`telemt_api.enabled = true`)."
+        ));
+    }
+    if state.db.get_active_user_by_tg_user(tg_user_id).await?.is_some() {
+        return Err(anyhow::anyhow!(
+            "Активный пользователь с этим Telegram ID уже есть в локальной базе."
+        ));
+    }
+    let telemt_user = telemt_username(tg_user_id);
+    let info = state.telemt_backend.get_user_info(&telemt_user, None).await?;
+    if info.is_none() {
+        return Err(anyhow::anyhow!(
+            "Пользователь {} не найден в telemt API.",
+            telemt_user
+        ));
+    }
+    state
+        .db
+        .set_approved(tg_user_id, None, None, &telemt_user, "", None)
+        .await?;
+    state
+        .db
+        .mark_sync_state(
+            tg_user_id,
+            TelemtBackendMode::ControlApi.as_str(),
+            None,
+            None,
+        )
+        .await?;
+    Ok(format!(
+        "Пользователь {} добавлен в локальную базу (секрет из API недоступен; ссылки строятся через /link).",
+        telemt_user
+    ))
 }

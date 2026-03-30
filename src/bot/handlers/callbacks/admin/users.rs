@@ -153,6 +153,62 @@ pub async fn handle(
             }
             Ok(true)
         }
+        CallbackAction::UserGroupPicker { tg_user_id, page } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Пользователь уже неактивен"), true).await?;
+                return Ok(true);
+            };
+            let groups = state.db.list_user_groups().await?;
+            let current = state
+                .db
+                .get_group_for_tg_user(tg_user_id)
+                .await?
+                .map(|g| g.name)
+                .unwrap_or_else(|| "нет".to_string());
+            let title = format!(
+                "📁 Группа для {}\n\nТекущая: {}",
+                crate::bot::handlers::format::user_display_name(&user),
+                current
+            );
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            bot.edit_message_text(chat_id, message_id, title)
+                .reply_markup(crate::bot::keyboards::user_group_picker_keyboard(
+                    tg_user_id,
+                    page,
+                    &groups,
+                ))
+                .await?;
+            Ok(true)
+        }
+        CallbackAction::AssignUserToGroup {
+            tg_user_id,
+            group_id,
+            page,
+        } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let Some(user) = state.db.get_active_user_by_tg_user(tg_user_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Пользователь уже неактивен"), true).await?;
+                return Ok(true);
+            };
+            let gid = if group_id == 0 {
+                None
+            } else {
+                if state.db.get_user_group_by_id(group_id).await?.is_none() {
+                    ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                    return Ok(true);
+                }
+                Some(group_id)
+            };
+            state.db.set_user_group_membership(tg_user_id, gid).await?;
+            ack_callback(bot, q.id.clone(), Some("Сохранено"), false).await?;
+            show_user_card(bot, chat_id, Some(message_id), &user, page, state).await?;
+            Ok(true)
+        }
         _ => Ok(false),
     }
 }

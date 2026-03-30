@@ -1,6 +1,7 @@
 use super::actions::{
-    apply_user_limit_from_input, handle_token_create_from_text, open_token_from_lookup_input,
-    open_user_from_lookup_input, process_invite_token, prompt_delete_confirmation,
+    apply_user_limit_from_input, broadcast_to_approved_users, handle_token_create_from_text,
+    import_remote_user_by_tg_id, open_token_from_lookup_input, open_user_from_lookup_input,
+    process_invite_token, prompt_delete_confirmation,
 };
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
@@ -31,6 +32,71 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
     };
 
     match wizard_state(&state, user_id).await? {
+        Some(WizardState::AdminBroadcastAwaitingMessage) => {
+            if !is_admin_message(&msg, &state) {
+                clear_wizard_state(&state, user_id).await?;
+                return Ok(());
+            }
+            broadcast_to_approved_users(&bot, &msg, &state, user_id, text).await?;
+        }
+        Some(WizardState::AdminGroupAwaitingName) => {
+            if !is_admin_message(&msg, &state) {
+                clear_wizard_state(&state, user_id).await?;
+                return Ok(());
+            }
+            let name = text.trim();
+            if name.is_empty() {
+                clear_wizard_state(&state, user_id).await?;
+                bot.send_message(msg.chat.id, "Создание группы отменено (пустое имя).")
+                    .await?;
+                return Ok(());
+            }
+            match state.db.create_user_group(name, None).await {
+                Ok(g) => {
+                    clear_wizard_state(&state, user_id).await?;
+                    bot.send_message(
+                        msg.chat.id,
+                        format!("Группа «{}» создана (id={}).", g.name, g.id),
+                    )
+                    .await?;
+                }
+                Err(error) => {
+                    bot.send_message(
+                        msg.chat.id,
+                        format!("Не удалось создать группу: {}", error),
+                    )
+                    .await?;
+                }
+            }
+        }
+        Some(WizardState::AdminImportAwaitingTgId) => {
+            if !is_admin_message(&msg, &state) {
+                clear_wizard_state(&state, user_id).await?;
+                return Ok(());
+            }
+            let trimmed = text.trim();
+            let tg_target = match trimmed.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Нужен числовой Telegram user id (например 123456789).",
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            };
+            match import_remote_user_by_tg_id(&state, tg_target).await {
+                Ok(message) => {
+                    clear_wizard_state(&state, user_id).await?;
+                    bot.send_message(msg.chat.id, message).await?;
+                }
+                Err(error) => {
+                    bot.send_message(msg.chat.id, format!("Импорт не выполнен: {}", error))
+                        .await?;
+                }
+            }
+        }
         Some(WizardState::AwaitingInviteToken) => {
             let username = msg.from.as_ref().and_then(|u| u.username.clone());
             let display_name = sender_display_name(&msg);

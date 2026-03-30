@@ -2,8 +2,8 @@ use super::super::common::{ack_callback, admin_callback_target};
 use super::AdminActionResult;
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{admin_show_stats, show_admin_home};
-use crate::bot::handlers::state::{BotState, clear_wizard_state};
-use teloxide::prelude::{Bot, CallbackQuery};
+use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
+use teloxide::prelude::{Bot, CallbackQuery, Requester};
 
 pub async fn handle(
     bot: &Bot,
@@ -29,6 +29,48 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_stats(bot, chat_id, state, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::PromptBroadcastApproved => {
+            let Some((admin_id, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            set_wizard_state(state, admin_id, WizardState::AdminBroadcastAwaitingMessage).await?;
+            ack_callback(
+                bot,
+                q.id.clone(),
+                Some("Отправьте текст следующим сообщением"),
+                false,
+            )
+            .await?;
+            bot.send_message(
+                chat_id,
+                "Рассылка всем пользователям со статусом «доступ открыт».\n\n\
+                 Отправьте текст одним сообщением. Пустое сообщение отменит шаг.\n\n\
+                 Учтите лимиты Telegram и то, что бот не может писать пользователям, которые ни разу не нажали /start.",
+            )
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::PromptImportUser => {
+            let Some((admin_id, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            set_wizard_state(state, admin_id, WizardState::AdminImportAwaitingTgId).await?;
+            ack_callback(
+                bot,
+                q.id.clone(),
+                Some("Жду Telegram user id"),
+                false,
+            )
+            .await?;
+            bot.send_message(
+                chat_id,
+                "Импорт пользователя из telemt по известному Telegram user id.\n\n\
+                 Отправьте числовой id (например 123456789). Пользователь должен существовать в telemt как `tg_<id>`.\n\n\
+                 Требуется `telemt_api.enabled = true`.",
+            )
+            .await?;
             Ok(true)
         }
         _ => Ok(false),

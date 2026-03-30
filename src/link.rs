@@ -35,3 +35,43 @@ pub fn build_proxy_link(
     )?;
     Ok(url)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{build_fake_tls_secret, build_proxy_link, generate_user_secret};
+    use crate::telemt_cfg::TelemtLinkParams;
+
+    #[test]
+    fn generate_user_secret_returns_32_hex_chars() {
+        let secret = generate_user_secret();
+
+        assert_eq!(secret.len(), 32);
+        assert!(secret.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn build_fake_tls_secret_prefixes_domain_hex() {
+        let secret = build_fake_tls_secret("0123456789abcdef0123456789abcdef", "example.com");
+
+        assert_eq!(
+            secret,
+            "ee0123456789abcdef0123456789abcdef6578616d706c652e636f6d"
+        );
+    }
+
+    #[test]
+    fn build_proxy_link_uses_fake_tls_secret() {
+        let params = TelemtLinkParams {
+            host: "proxy.example.com".to_string(),
+            port: 443,
+            tls_domain: "example.com".to_string(),
+        };
+
+        let link = build_proxy_link(&params, "0123456789abcdef0123456789abcdef").unwrap();
+
+        assert_eq!(
+            link,
+            "tg://proxy?server=proxy.example.com&port=443&secret=ee0123456789abcdef0123456789abcdef6578616d706c652e636f6d"
+        );
+    }
+}
