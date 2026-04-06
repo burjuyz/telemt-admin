@@ -16,6 +16,8 @@ TELEMT_ADMIN_SERVICE_NAME="${TELEMT_ADMIN_SERVICE_NAME:-telemt-admin.service}"
 TELEMT_USER="${TELEMT_USER:-telemt}"
 TELEMT_ADMIN_USER="${TELEMT_ADMIN_USER:-telemt-admin}"
 POLKIT_RULE_PATH="${POLKIT_RULE_PATH:-/etc/polkit-1/rules.d/50-telemt-admin.rules}"
+PROMPT_INPUT_FD=0
+PROMPT_INPUT_SOURCE="stdin"
 
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ] && [ "${TERM:-}" != "dumb" ]; then
     COLOR_BLUE='\033[1;34m'
@@ -130,6 +132,34 @@ ensure_systemd() {
     [ -d /run/systemd/system ] || fail "systemd не обнаружен. Этот установщик рассчитан на systemd-based Linux."
 }
 
+setup_prompt_input() {
+    if [ -t 0 ]; then
+        PROMPT_INPUT_FD=0
+        PROMPT_INPUT_SOURCE="stdin"
+        return 0
+    fi
+
+    if exec 3</dev/tty 2>/dev/null; then
+        PROMPT_INPUT_FD=3
+        PROMPT_INPUT_SOURCE="/dev/tty"
+        return 0
+    fi
+
+    fail "Интерактивный ввод недоступен. Запустите установщик из терминала с TTY. Для non-interactive среды сначала сохраните скрипт в файл и выполните его локально."
+}
+
+prompt_read_line() {
+    local __result_var="$1"
+    local prompt_text="$2"
+    local value
+
+    printf '%s' "$prompt_text" >&2
+    if ! IFS= read -r -u "$PROMPT_INPUT_FD" value; then
+        fail "Не удалось прочитать ввод из ${PROMPT_INPUT_SOURCE}. Установщик требует интерактивный терминал."
+    fi
+    printf -v "$__result_var" '%s' "$value"
+}
+
 validate_admin_ids() {
     local value="$1"
     printf '%s' "$value" | grep -Eq '^[0-9]+([[:space:]]*,[[:space:]]*[0-9]+)*$'
@@ -176,8 +206,7 @@ prompt_nonempty() {
     local prompt_text="$1"
     local value=""
     while [ -z "$value" ]; do
-        printf '%s: ' "$prompt_text" >&2
-        IFS= read -r value
+        prompt_read_line value "${prompt_text}: "
         if [ -z "$value" ]; then
             warn "Значение не может быть пустым."
         fi
@@ -188,8 +217,7 @@ prompt_nonempty() {
 prompt_admin_ids() {
     local value=""
     while true; do
-        printf '%s: ' "Telegram admin ID или список через запятую" >&2
-        IFS= read -r value
+        prompt_read_line value "Telegram admin ID или список через запятую: "
         if validate_admin_ids "$value"; then
             printf '%s' "$value"
             return 0
@@ -201,8 +229,7 @@ prompt_admin_ids() {
 prompt_port() {
     local value=""
     while true; do
-        printf '%s [443]: ' "Порт для telemt" >&2
-        IFS= read -r value
+        prompt_read_line value "Порт для telemt [443]: "
         value="${value:-443}"
         if ! validate_port "$value"; then
             warn "Введите корректный TCP-порт в диапазоне 1..65535."
@@ -224,8 +251,7 @@ prompt_tls_domain() {
 prompt_announce() {
     local value=""
     while true; do
-        printf '%s: ' "Публичный IPv4 для announce" >&2
-        IFS= read -r value
+        prompt_read_line value "Публичный IPv4 для announce: "
         if validate_ipv4 "$value"; then
             printf '%s' "$value"
             return 0
@@ -312,6 +338,7 @@ main() {
 
     info "Установка telemt + telemt-admin (Linux/systemd MVP)"
     info "Бинарники будут установлены в ${TELEMT_BIN_DIR%/}/telemt и ${TELEMT_ADMIN_BIN_DIR%/}/telemt-admin"
+    setup_prompt_input
 
     local bot_token
     local admin_ids_csv

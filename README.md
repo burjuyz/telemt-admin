@@ -63,10 +63,19 @@
 - создаёт `telemt.toml`, `telemt-admin.toml`, `systemd` unit-файлы и Polkit-правило;
 - включает и запускает `telemt.service` и `telemt-admin.service`.
 
-Запуск:
+Запуск из интерактивного терминала:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fgbm/telemt-admin/master/scripts/install.sh | sudo bash
+```
+
+Установщик задаёт интерактивные вопросы и читает ответы из терминала. Если TTY недоступен, скрипт завершится с ошибкой вместо бесконечных повторных prompt'ов.
+
+Для CI, automation или сессий без TTY сначала сохраните скрипт в файл и запустите его локально:
+
+```bash
+curl -fsSLo install.sh https://raw.githubusercontent.com/fgbm/telemt-admin/master/scripts/install.sh
+sudo bash ./install.sh
 ```
 
 Во время установки скрипт спросит только минимально необходимые значения:
