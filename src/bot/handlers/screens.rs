@@ -521,7 +521,9 @@ pub async fn show_token_menu(
     message_id: Option<MessageId>,
     state: &BotState,
 ) -> HandlerResult {
-    let text = "Управление invite-токенами\n\nВыберите действие.";
+    let text = "Управление invite-токенами\n\n\
+        Ссылка действует ограниченное время и ограничена числом активаций; это не срок подписки пользователя в telemt.\n\n\
+        Выберите действие.";
     upsert_screen(
         bot,
         chat_id,
@@ -549,7 +551,9 @@ pub async fn admin_show_token_list_page(
             total_items: total_tokens,
             page_size: tokens_page_size,
             requested_page,
-            empty_text: "🎟 Токены\n\nАктивных invite-токенов нет.".to_string(),
+            empty_text: "🎟 Токены\n\nАктивных invite-токенов нет.\n\
+                (Срок в параметрах токена — это срок ссылки, не пользователя в telemt.)"
+                .to_string(),
             empty_keyboard: crate::bot::keyboards::token_menu_keyboard(
                 state.config.security.allow_auto_approve_tokens,
             ),
@@ -558,7 +562,9 @@ pub async fn admin_show_token_list_page(
         |token| (token.id, render_invite_token_button_title(token)),
         |total, page, total_pages| {
             format!(
-                "🎟 Токены · {}\nСтраница: {}/{}\n\nВыберите токен.",
+                "🎟 Токены · {}\nСтраница: {}/{}\n\n\
+                 В списке — срок действия invite-ссылки, не подписки пользователя.\n\n\
+                 Выберите токен.",
                 total, page, total_pages
             )
         },

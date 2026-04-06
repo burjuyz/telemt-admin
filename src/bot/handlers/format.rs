@@ -41,7 +41,7 @@ pub fn user_display_name(user: &RegistrationRequest) -> String {
 pub fn render_invite_token_button_title(token: &InviteToken) -> String {
     let mode = if token.auto_approve { "AUTO" } else { "MANUAL" };
     format!(
-        "{} · {} · до {}",
+        "{} · {} · invite до {}",
         token.token,
         mode,
         format_date(token.expires_at)
@@ -59,19 +59,19 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
         .map(|value| value.to_string())
         .unwrap_or_else(|| "—".to_string());
     let expires_at = format_date(token.expires_at);
-    let expires_label = format!("до {}", expires_at);
 
     format!(
         "🎟 Invite-токен\n\n\
          🔑 {}\n\
          ⚙️ {}\n\
-         ⏳ {}\n\
-         📊 {}\n\
+         ⏳ Срок действия ссылки (invite): до {}\n\
+         📊 Активаций по ссылке: {}\n\
          👤 {}\n\
-         📅 создан {}",
+         📅 создан {}\n\n\
+         Срок доступа пользователя в telemt задаётся отдельно (карточка пользователя).",
         token.token,
         mode,
-        expires_label,
+        expires_at,
         usage,
         created_by,
         format_date(token.created_at),
@@ -374,7 +374,7 @@ mod tests {
 
         assert!(title.contains("TOKEN123"));
         assert!(title.contains("AUTO"));
-        assert!(title.contains("до "));
+        assert!(title.contains("invite до "));
     }
 
     #[test]

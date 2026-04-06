@@ -47,9 +47,12 @@ pub async fn handle_token_create_from_text(
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let security = &state.config.security;
     let format_hint = format!(
-        "Отправьте одно число (дни) или два числа: дни и лимит использований.\n\
-         По умолчанию: {} дней, лимит без ограничений.\n\
-         Примеры: 7 или 7 3.",
+        "Параметры invite-токена (срок действия ссылки и лимит активаций).\n\
+         Это не срок доступа пользователя в telemt — его задают отдельно в карточке пользователя.\n\n\
+         Формат: одно число — срок действия invite-токена в днях; или два числа: дни и максимум активаций.\n\
+         По умолчанию: {} дней, лимит активаций без ограничения.\n\
+         Примеры: 7 или 7 3.\n\
+         Лимит активаций можно задать и флагом: --max-uses 3",
         security.default_token_days
     );
     if auto_approve && !security.allow_auto_approve_tokens {
@@ -81,7 +84,7 @@ pub async fn handle_token_create_from_text(
                 let parsed = match value.parse::<i64>() {
                     Ok(parsed) if parsed >= 1 => parsed,
                     _ => {
-                        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
+                        bot.send_message(chat_id, "Лимит активаций токена должен быть не меньше 1.")
                             .await?;
                         return Ok(false);
                     }
@@ -89,7 +92,7 @@ pub async fn handle_token_create_from_text(
                 if max_uses.is_some() {
                     bot.send_message(
                         chat_id,
-                        "Лимит использований можно указать только один раз.",
+                        "Лимит активаций токена можно указать только один раз.",
                     )
                     .await?;
                     return Ok(false);
@@ -103,7 +106,7 @@ pub async fn handle_token_create_from_text(
                     if positional_numbers.len() > 2 {
                         bot.send_message(
                             chat_id,
-                            "Укажите не больше двух чисел: срок в днях и лимит использований.",
+                            "Укажите не больше двух чисел: срок действия invite-токена (дни) и лимит активаций.",
                         )
                         .await?;
                         return Ok(false);
@@ -119,7 +122,10 @@ pub async fn handle_token_create_from_text(
 
     if let Some(parsed_days) = positional_numbers.first().copied() {
         if days.is_some() {
-            bot.send_message(chat_id, "Срок действия можно указать только один раз.")
+            bot.send_message(
+                chat_id,
+                "Срок действия invite-токена (дни) можно указать только один раз.",
+            )
                 .await?;
             return Ok(false);
         }
@@ -129,7 +135,7 @@ pub async fn handle_token_create_from_text(
         if max_uses.is_some() {
             bot.send_message(
                 chat_id,
-                "Лимит использований можно указать только один раз.",
+                "Лимит активаций токена можно указать только один раз.",
             )
             .await?;
             return Ok(false);
@@ -139,14 +145,17 @@ pub async fn handle_token_create_from_text(
 
     let days = days.unwrap_or(security.default_token_days);
     if days < 1 {
-        bot.send_message(chat_id, "Срок действия должен быть не меньше 1 дня.")
+        bot.send_message(
+            chat_id,
+            "Срок действия invite-токена (дней) должен быть не меньше 1.",
+        )
             .await?;
         return Ok(false);
     }
     if let Some(max_uses) = max_uses
         && max_uses < 1
     {
-        bot.send_message(chat_id, "Лимит использований должен быть не меньше 1.")
+        bot.send_message(chat_id, "Лимит активаций токена должен быть не меньше 1.")
             .await?;
         return Ok(false);
     }
@@ -154,7 +163,7 @@ pub async fn handle_token_create_from_text(
         bot.send_message(
             chat_id,
             format!(
-                "Нельзя создать токен на срок больше {} дней.",
+                "Срок действия invite-токена не может превышать {} дней.",
                 security.max_token_days
             ),
         )
@@ -181,12 +190,13 @@ pub async fn handle_token_create_from_text(
         });
 
     let response = format!(
-        "✅ Токен создан:\n\
+        "✅ Invite-токен создан:\n\
          Код: <code>{}</code>\n\
          {}\
          Режим: {}\n\
-         Действует до: {}\n\
-         Лимит использований: {}\n",
+         Срок действия ссылки (invite): до {}\n\
+         Лимит активаций по ссылке: {}\n\
+         (Срок доступа пользователя в telemt задаётся отдельно.)\n",
         token.token,
         link_line,
         format_mode(token.auto_approve),

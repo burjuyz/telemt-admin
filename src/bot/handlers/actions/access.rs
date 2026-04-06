@@ -98,15 +98,15 @@ async fn notify_auto_approve(
         TokenMode::Manual => "manual",
     };
     let text = format!(
-        "✅ Автоподключение по токену\n\
+        "✅ Автоподключение по invite-токену\n\
          User ID: {}\n\
          Username: @{}\n\
          Имя: {}\n\
-         Token: {}\n\
+         Invite token: {}\n\
          Token ID: {}\n\
          Mode: {}\n\
-         Expires: {}\n\
-         Usage: {}/{}\n\
+         Срок действия ссылки (invite), не пользователя: {}\n\
+         Активаций по токену: {}/{}\n\
          Created by: {}",
         tg_user_id,
         tg_username.unwrap_or("—"),
@@ -195,11 +195,11 @@ async fn send_invite_token_error_message(
                 .await?;
         }
         TokenConsumeError::Expired => {
-            bot.send_message(chat_id, "Срок действия токена истёк.")
+            bot.send_message(chat_id, "Срок действия invite-токена (ссылки) истёк.")
                 .await?;
         }
         TokenConsumeError::UsageLimitReached => {
-            bot.send_message(chat_id, "Лимит использований токена исчерпан.")
+            bot.send_message(chat_id, "Лимит активаций invite-токена исчерпан.")
                 .await?;
         }
         TokenConsumeError::Internal(error) => return Err(error.into()),
