@@ -3,7 +3,9 @@
 use crate::bot::handlers::shared::HandlerResult;
 use crate::bot::handlers::state::{BotState, clear_wizard_state};
 use std::time::Duration;
+use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Message, Requester};
+use teloxide::types::ParseMode;
 
 pub async fn broadcast_to_approved_users(
     bot: &Bot,
@@ -30,6 +32,7 @@ pub async fn broadcast_to_approved_users(
     for tg_user_id in ids {
         match bot
             .send_message(ChatId(tg_user_id), trimmed)
+            .parse_mode(ParseMode::Html)
             .await
         {
             Ok(_) => ok += 1,
