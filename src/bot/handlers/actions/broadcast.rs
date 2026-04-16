@@ -7,6 +7,12 @@ use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Message, Requester};
 use teloxide::types::ParseMode;
 
+/// Проверяет, является ли текст командой отмены рассылки.
+fn is_cancel_command(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    matches!(lower.as_str(), "отмена" | "/cancel" | "/отмена" | "cancel")
+}
+
 pub async fn broadcast_to_approved_users(
     bot: &Bot,
     msg: &Message,
@@ -15,13 +21,20 @@ pub async fn broadcast_to_approved_users(
     text: &str,
 ) -> HandlerResult {
     let trimmed = text.trim();
-    if trimmed.is_empty() {
+    
+    // Отмена рассылки по команде или пустому тексту
+    if trimmed.is_empty() || is_cancel_command(trimmed) {
         clear_wizard_state(state, admin_tg_user_id).await?;
-        bot.send_message(
-            msg.chat.id,
-            state.config.bot_messages.broadcast_cancelled_or_default(),
-        )
-            .await?;
+        let cancel_message = state.config.bot_messages.broadcast_cancelled_or_default();
+        
+        // Гарантируем, что сообщение не пустое
+        let message = if cancel_message.trim().is_empty() {
+            "Рассылка отменена."
+        } else {
+            cancel_message
+        };
+        
+        bot.send_message(msg.chat.id, message).await?;
         return Ok(());
     }
 
