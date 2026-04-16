@@ -1,7 +1,9 @@
 use super::common::{ack_callback, replace_wizard_state};
-use crate::bot::handlers::actions::{send_user_link, try_auto_import_remote_user_by_tg_id};
+use crate::bot::handlers::actions::try_auto_import_remote_user_by_tg_id;
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::screens::{show_admin_home, show_usage_guide, show_user_home};
+use crate::bot::handlers::screens::{
+    show_admin_home, show_user_home, show_user_link_screen, show_usage_guide,
+};
 use crate::bot::handlers::shared::callback_message_target;
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state};
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
@@ -36,17 +38,17 @@ pub async fn handle_user_action(
             let user_id = q.from.id.0 as i64;
             let username = q.from.username.as_deref();
             let display_name = Some(q.from.full_name());
-            ack_callback(bot, q.id.clone(), Some("Отправляю ссылку"), false).await?;
-            if let Some((chat_id, _)) = callback_message_target(q) {
-                send_user_link(
-                    bot,
-                    chat_id,
+            if let Some((chat_id, message_id)) = callback_message_target(q) {
+                ack_callback(bot, q.id.clone(), None, false).await?;
+                let _ = try_auto_import_remote_user_by_tg_id(
+                    state,
                     user_id,
                     username,
                     display_name.as_deref(),
-                    state,
+                    None,
                 )
                 .await?;
+                show_user_link_screen(bot, chat_id, Some(message_id), state, user_id).await?;
             }
             Ok(true)
         }

@@ -466,62 +466,6 @@ pub async fn process_invite_token(
     Ok(())
 }
 
-pub async fn send_user_link(
-    bot: &Bot,
-    chat_id: ChatId,
-    tg_user_id: i64,
-    tg_username: Option<&str>,
-    tg_display_name: Option<&str>,
-    state: &BotState,
-) -> HandlerResult {
-    let maybe = state.db.get_approved(tg_user_id).await?;
-    match maybe {
-        Some((telemt_user, secret)) => {
-            send_existing_user_link_message(bot, chat_id, state, &telemt_user, &secret).await?;
-        }
-        None => {
-            if state.config.is_admin(tg_user_id) {
-                tracing::info!(
-                    tg_user_id = tg_user_id,
-                    "Администратор запросил ссылку без существующей учётной записи, создаём доступ автоматически"
-                );
-                let link = approve_user_direct_and_build_link(
-                    state,
-                    tg_user_id,
-                    tg_username,
-                    tg_display_name,
-                    None,
-                )
-                .await?;
-                bot.send_message(chat_id, state.config.bot_messages.user_link_text(&link))
-                    .await?;
-            } else if try_auto_import_remote_user_by_tg_id(
-                state,
-                tg_user_id,
-                tg_username,
-                tg_display_name,
-                None,
-            )
-            .await?
-            {
-                let (telemt_user, secret) = state
-                    .db
-                    .get_approved(tg_user_id)
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("Пользователь импортирован, но ссылка не может быть построена"))?;
-                send_existing_user_link_message(bot, chat_id, state, &telemt_user, &secret).await?;
-            } else {
-                bot.send_message(
-                    chat_id,
-                    "У вас нет доступа к прокси. Отправьте /start для регистрации.",
-                )
-                .await?;
-            }
-        }
-    }
-    Ok(())
-}
-
 pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     state.db.set_user_group_membership(tg_user_id, None).await?;

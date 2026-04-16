@@ -470,34 +470,41 @@ pub async fn show_user_home(
     state: &BotState,
     user_id: i64,
 ) -> HandlerResult {
-    let text = if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
+    let (text, keyboard) = if let Some(existing) = state.db.get_request_by_tg_user(user_id).await? {
         match existing.status {
             RequestStatus::Approved => {
-                "Доступ уже открыт.\n\nНажмите «Получить ссылку».".to_string()
+                (
+                    "✅ Доступ открыт.\n\nНажмите «Моя ссылка», чтобы получить ссылку на прокси.".to_string(),
+                    crate::bot::keyboards::user_home_keyboard(),
+                )
             }
             RequestStatus::Pending => {
-                "Заявка уже на рассмотрении.\n\nДождитесь решения администратора.".to_string()
+                (
+                    "⏳ Заявка на рассмотрении.\n\nДождитесь решения администратора.\nДля ускорения — отправьте invite-токен, если он у вас есть.".to_string(),
+                    crate::bot::keyboards::user_pending_keyboard(),
+                )
             }
             RequestStatus::Rejected => {
-                "Заявка отклонена.\n\nЕсли есть новый invite-токен, отправьте /start и введите его заново.".to_string()
+                (
+                    "❌ Заявка отклонена.\n\nЕсли у вас есть новый invite-токен, введите его.".to_string(),
+                    crate::bot::keyboards::user_pending_keyboard(),
+                )
             }
             RequestStatus::Deleted => {
-                "Доступ был отозван.\n\nДля новой регистрации отправьте /start и введите invite-токен заново.".to_string()
+                (
+                    "🚫 Доступ отозван.\n\nДля новой регистрации введите новый invite-токен.".to_string(),
+                    crate::bot::keyboards::user_pending_keyboard(),
+                )
             }
         }
     } else {
-        "Чтобы получить доступ, отправьте /start и введите invite-токен.\n\nЕсли токен уже есть, нажмите кнопку ниже."
-            .to_string()
+        (
+            "🔒 Чтобы получить доступ, введите invite-токен.".to_string(),
+            crate::bot::keyboards::user_pending_keyboard(),
+        )
     };
 
-    upsert_screen(
-        bot,
-        chat_id,
-        message_id,
-        text,
-        crate::bot::keyboards::user_home_keyboard(),
-    )
-    .await
+    upsert_screen(bot, chat_id, message_id, text, keyboard).await
 }
 
 pub async fn show_usage_guide(
@@ -513,6 +520,38 @@ pub async fn show_usage_guide(
         crate::bot::keyboards::guide_keyboard(),
     )
     .await
+}
+
+/// Показать ссылку на прокси (editable message).
+/// Если пользователь approved — показывает ссылку, если нет — предлагает регистрацию.
+pub async fn show_user_link_screen(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+    user_id: i64,
+) -> HandlerResult {
+    let maybe = state.db.get_approved(user_id).await?;
+    if let Some((telemt_user, secret)) = maybe {
+        let secret_opt = (!secret.is_empty()).then_some(secret.as_str());
+        let link = state
+            .telemt_backend
+            .build_user_link(telemt_user.as_str(), secret_opt)
+            .await?;
+        let text = state.config.bot_messages.user_link_text(&link);
+        upsert_screen(bot, chat_id, message_id, text, crate::bot::keyboards::user_home_keyboard())
+            .await
+    } else {
+        let text = "🔒 У вас нет доступа к прокси.\n\nВведите invite-токен, чтобы получить доступ.".to_string();
+        upsert_screen(
+            bot,
+            chat_id,
+            message_id,
+            text,
+            crate::bot::keyboards::user_pending_keyboard(),
+        )
+        .await
+    }
 }
 
 pub async fn show_token_menu(

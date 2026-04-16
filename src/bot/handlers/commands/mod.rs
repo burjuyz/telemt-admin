@@ -1,12 +1,12 @@
 use super::actions::{
     admin_show_connections_summary, admin_show_service_panel, process_invite_token,
-    send_user_link, show_user_card, try_auto_import_remote_user_by_tg_id,
+    show_user_card, try_auto_import_remote_user_by_tg_id,
 };
 use super::callback_data::CallbackAction;
 use super::screens::{
     admin_show_pending_requests_page, admin_show_stats, admin_show_users_page,
     send_text_with_keyboard_removed, show_admin_home, show_token_card, show_token_menu,
-    show_user_home,
+    show_user_home, show_user_link_screen,
 };
 use super::shared::{
     AdminStartScreen, HandlerResult, StartPayload, parse_start_payload, send_admin_backend_error,
@@ -27,8 +27,6 @@ use teloxide::utils::command::BotCommands;
 pub enum PublicBotCommand {
     #[command(description = "🏠 Главный экран")]
     Start,
-    #[command(description = "🔗 Получить ссылку")]
-    Link,
     #[command(description = "❓ Справка")]
     Help,
 }
@@ -44,8 +42,6 @@ pub enum AdminBotCommand {
     Token,
     #[command(description = "⚙️ Управление сервисом")]
     Service,
-    #[command(description = "🔗 Получить ссылку")]
-    Link,
     #[command(description = "❓ Справка")]
     Help,
 }
@@ -133,16 +129,15 @@ pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult 
 /user — пользователи
 /token — токены
 /service — сервис
-/link — моя ссылка
 /help — справка
 
 Основные действия выполняются внутри разделов через кнопки."#
     } else {
         r#"Команды:
 /start — главный экран
-/link — получить ссылку
 /help — справка
 
+Ссылка и настройки — в главном экране (/start).
 Если доступа ещё нет, бот подскажет следующий шаг."#
     };
     send_text_with_keyboard_removed(&bot, msg.chat.id, text).await?;
@@ -294,7 +289,7 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     {
         clear_wizard_state(&state, user_id).await?;
         bot.send_message(msg.chat.id, stub)
-            .reply_markup(crate::bot::keyboards::user_home_keyboard())
+            .reply_markup(crate::bot::keyboards::user_pending_keyboard())
             .await?;
         return Ok(());
     }
@@ -319,15 +314,16 @@ async fn cmd_link(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     let display_name = sender_display_name(&msg);
     tracing::info!(user_id = user_id, "Received /link command");
 
-    send_user_link(
-        &bot,
-        msg.chat.id,
+    let _ = try_auto_import_remote_user_by_tg_id(
+        &state,
         user_id,
         username,
         display_name.as_deref(),
-        &state,
+        None,
     )
-    .await
+    .await?;
+
+    show_user_link_screen(&bot, msg.chat.id, None, &state, user_id).await
 }
 
 async fn cmd_user(bot: Bot, msg: Message, state: BotState) -> HandlerResult {

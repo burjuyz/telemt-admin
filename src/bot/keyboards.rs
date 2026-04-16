@@ -59,24 +59,31 @@ pub fn approve_reject_buttons(request_id: i64) -> InlineKeyboardMarkup {
     ])
 }
 
+/// Клавиатура для пользователей с доступом (approved).
+/// Включает все основные кнопки: ссылка, группы, обновление статуса.
 pub fn user_home_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback(
-                "🔑 Ввести invite-токен",
-                CallbackAction::PromptInviteToken.encode(),
-            ),
-            InlineKeyboardButton::callback(
-                "❓ Инструкция",
-                CallbackAction::ShowUsageGuide.encode(),
-            ),
-        ],
         vec![InlineKeyboardButton::callback(
-            "🔗 Получить ссылку",
+            "🔗 Моя ссылка",
             CallbackAction::ShowUserLink.encode(),
         )],
         vec![InlineKeyboardButton::callback(
             "🔄 Обновить статус",
+            CallbackAction::ShowUserHome.encode(),
+        )],
+    ])
+}
+
+/// Клавиатура для пользователей без доступа (pending / без токена).
+/// Только регистрация и проверка статуса — без "Инструкции" и лишних кнопок.
+pub fn user_pending_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![InlineKeyboardButton::callback(
+            "🔑 Ввести invite-токен",
+            CallbackAction::PromptInviteToken.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "🔄 Проверить статус",
             CallbackAction::ShowUserHome.encode(),
         )],
     ])

@@ -288,8 +288,8 @@ pub fn render_user_card_text(
 pub fn usage_guide_text() -> &'static str {
     r#"Как подключиться к прокси:
 
-1) Получите ссылку через команду /link.
-2) Нажмите на ссылку — Telegram автоматически предложит добавить прокси.
+1) Откройте главный экран (/start) и нажмите «Моя ссылка».
+2) Telegram автоматически предложит добавить прокси.
 3) Подтвердите добавление.
 
 Если доступа ещё нет, начните с /start и введите invite-токен.
@@ -410,6 +410,6 @@ mod tests {
         let text = usage_guide_text();
 
         assert!(text.contains("/start"));
-        assert!(text.contains("/link"));
+        assert!(text.contains("Моя ссылка"));
     }
 }

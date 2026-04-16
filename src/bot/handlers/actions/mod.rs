@@ -6,7 +6,7 @@ pub mod tokens;
 pub mod users;
 
 pub use access::{
-    approve_request_and_build_link, perform_hard_ban, process_invite_token, send_user_link,
+    approve_request_and_build_link, perform_hard_ban, process_invite_token,
 };
 pub use broadcast::broadcast_to_approved_users;
 pub use service::{
