@@ -29,6 +29,8 @@ pub enum PublicBotCommand {
     Start,
     #[command(description = "❓ Справка")]
     Help,
+    #[command(description = "❌ Отменить текущее действие")]
+    Cancel,
 }
 
 #[derive(BotCommands, Clone)]
@@ -44,6 +46,8 @@ pub enum AdminBotCommand {
     Service,
     #[command(description = "❓ Справка")]
     Help,
+    #[command(description = "❌ Отменить текущее действие")]
+    Cancel,
 }
 
 pub fn public_telegram_commands() -> Vec<BotCommand> {
@@ -103,6 +107,8 @@ async fn handle_command_message_inner(bot: Bot, msg: Message, state: BotState) -
         return Ok(());
     };
 
+    tracing::info!("Parsed command name: '{}'", command_name);
+
     match command_name {
         "start" => start_cmd(bot, msg, state).await,
         "link" => cmd_link(bot, msg, state).await,
@@ -110,12 +116,35 @@ async fn handle_command_message_inner(bot: Bot, msg: Message, state: BotState) -
         "user" => cmd_user(bot, msg, state).await,
         "service" => cmd_service(bot, msg, state).await,
         "token" => cmd_token(bot, msg, state).await,
+        "cancel" | "отмена" => cmd_cancel(bot, msg, state).await,
         _ => {
+            tracing::warn!("Unknown command triggered: '{}'", command_name);
             bot.send_message(msg.chat.id, "Неизвестная команда. Используйте /help.")
                 .await?;
             Ok(())
         }
     }
+}
+
+pub async fn cmd_cancel(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
+    let Some(user_id) = sender_user_id(&msg) else {
+        return Ok(());
+    };
+    
+    // Проверяем, был ли пользователь в каком-то состоянии
+    let had_state = crate::bot::handlers::state::wizard_state(&state, user_id)
+        .await
+        .map(|s| s.is_some())
+        .unwrap_or(false);
+
+    if had_state {
+        clear_wizard_state(&state, user_id).await?;
+        bot.send_message(msg.chat.id, "Действие отменено.").await?;
+    } else {
+        bot.send_message(msg.chat.id, "Нет активных действий для отмены.").await?;
+    }
+    
+    Ok(())
 }
 
 pub async fn cmd_help(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
