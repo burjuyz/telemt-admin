@@ -6,7 +6,7 @@ use super::actions::{
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
-    sender_user_id, wizard_state,
+    sender_user_id, set_wizard_state, wizard_state,
 };
 use chrono::{NaiveDate, Utc};
 use teloxide::prelude::*;
@@ -237,6 +237,149 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
             if created {
                 clear_wizard_state(&state, user_id).await?;
             }
+        }
+        Some(WizardState::AdminTokenAwaitingExpiration { auto_approve }) => {
+            let text = text.trim();
+            let expiration_days = match text {
+                "30" | "60" | "180" => Some(text.parse::<i32>().unwrap()),
+                _ => text.parse::<i32>().ok().filter(|&d| d > 0 && d <= 365),
+            };
+            if let Some(days) = expiration_days {
+                set_wizard_state(
+                    &state,
+                    user_id,
+                    WizardState::AdminTokenAwaitingMaxIps {
+                        auto_approve,
+                        expiration_days: Some(days),
+                    },
+                )
+                .await?;
+                bot.send_message(
+                    msg.chat.id,
+                    format!(
+                        "Срок доступа: {} дн.\n\nТеперь введите лимит IP (Max Unique IPs) — \
+                         количество устройств, с которых можно подключаться. \
+                         Например: 3 или пропустите это поле отправив /skip",
+                        days
+                    ),
+                )
+                .await?;
+            } else {
+                bot.send_message(
+                    msg.chat.id,
+                    "Укажите срок в днях: 30, 60, 180 или другое число (1-365).",
+                )
+                .await?;
+            }
+        }
+        Some(WizardState::AdminTokenAwaitingMaxIps {
+            auto_approve,
+            expiration_days,
+        }) => {
+            let text = text.trim();
+            let max_unique_ips = if text == "/skip" {
+                None
+            } else {
+                text.parse::<i32>().ok().filter(|&v| v > 0 && v <= 10)
+            };
+            set_wizard_state(
+                &state,
+                user_id,
+                WizardState::AdminTokenAwaitingDataQuota {
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                },
+            )
+            .await?;
+            let ips_text = max_unique_ips.map(|v| v.to_string()).unwrap_or_else(|| "не ограничен".to_string());
+            bot.send_message(
+                msg.chat.id,
+                format!(
+                    "Лимит IP: {}.\n\nТеперь введите квоту трафика в GB (например: 10) \
+                     или пропустите отправив /skip",
+                    ips_text
+                ),
+            )
+            .await?;
+        }
+        Some(WizardState::AdminTokenAwaitingDataQuota {
+            auto_approve,
+            expiration_days,
+            max_unique_ips,
+        }) => {
+            let text = text.trim();
+            let data_quota_bytes = if text == "/skip" {
+                None
+            } else {
+                text.parse::<i64>()
+                    .ok()
+                    .filter(|&v| v > 0)
+                    .map(|v| v * 1_073_741_824)
+            };
+            let token = state
+                .db
+                .create_invite_token(
+                    30,
+                    auto_approve,
+                    None,
+                    Some(user_id),
+                    expiration_days,
+                    max_unique_ips,
+                    data_quota_bytes,
+                )
+                .await?;
+
+            let link_line = state
+                .bot_username
+                .as_deref()
+                .map(|bot_username| {
+                    let invite_link = crate::bot::handlers::shared::build_bot_start_link(
+                        bot_username,
+                        &token.token,
+                    );
+                    format!("Ссылка: {}\n", invite_link)
+                })
+                .unwrap_or_else(|| {
+                    "Ссылка: недоступна (username бота неизвестен).\n".to_string()
+                });
+
+            let limits_text = {
+                let mut parts = Vec::new();
+                if let Some(days) = token.default_expiration_days {
+                    parts.push(format!("доступ {} дн.", days));
+                }
+                if let Some(ips) = token.default_max_unique_ips {
+                    parts.push(format!("IP: {}", ips));
+                }
+                if let Some(quota) = token.default_data_quota_bytes {
+                    let gb = quota as f64 / 1_073_741_824.0;
+                    parts.push(format!("{:.1} GB", gb));
+                }
+                if parts.is_empty() {
+                    "по умолчанию".to_string()
+                } else {
+                    parts.join(", ")
+                }
+            };
+
+            bot.send_message(
+                msg.chat.id,
+                format!(
+                    "✅ Invite-токен создан:\n\
+                     Код: <code>{}</code>\n\
+                     {}\
+                     Режим: {}\n\
+                     Лимиты пользователя: {}\n",
+                    token.token,
+                    link_line,
+                    if auto_approve { "AUTO" } else { "MANUAL" },
+                    limits_text,
+                ),
+            )
+            .parse_mode(teloxide::types::ParseMode::Html)
+            .await?;
+            clear_wizard_state(&state, user_id).await?;
         }
         None => {
             bot.send_message(

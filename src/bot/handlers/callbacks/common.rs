@@ -76,7 +76,7 @@ pub async fn start_wizard_from_callback(
             WizardState::AdminFindTokenAwaitingCode { page }
         }
         CallbackAction::PromptTokenCreate { auto_approve } => {
-            WizardState::AdminTokenCreateAwaitingParams { auto_approve }
+            WizardState::AdminTokenAwaitingExpiration { auto_approve }
         }
         CallbackAction::PromptDeleteUser => WizardState::AdminDeleteAwaitingTarget,
         _ => {

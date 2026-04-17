@@ -368,6 +368,9 @@ mod tests {
             usage_count: 1,
             max_usage: Some(5),
             is_active: true,
+            default_expiration_days: Some(30),
+            default_max_unique_ips: Some(3),
+            default_data_quota_bytes: Some(1_073_741_824),
         };
 
         let title = render_invite_token_button_title(&token);

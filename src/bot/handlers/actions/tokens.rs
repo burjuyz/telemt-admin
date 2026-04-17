@@ -2,9 +2,29 @@ use crate::bot::handlers::format::{format_date, format_mode};
 use crate::bot::handlers::screens::show_token_card;
 use crate::bot::handlers::shared::build_bot_start_link;
 use crate::bot::handlers::state::BotState;
+use crate::db::InviteToken;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, ChatId, Requester};
 use teloxide::types::ParseMode;
+
+fn format_token_limits(token: &InviteToken) -> String {
+    let mut parts = Vec::new();
+    if let Some(days) = token.default_expiration_days {
+        parts.push(format!("{} дн.", days));
+    }
+    if let Some(ips) = token.default_max_unique_ips {
+        parts.push(format!("IP: {}", ips));
+    }
+    if let Some(quota) = token.default_data_quota_bytes {
+        let quota_gb = quota as f64 / 1_073_741_824.0;
+        parts.push(format!("{:.1} GB", quota_gb));
+    }
+    if parts.is_empty() {
+        "по умолчанию".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
 
 pub async fn open_token_from_lookup_input(
     bot: &Bot,
@@ -173,7 +193,7 @@ pub async fn handle_token_create_from_text(
 
     let token = state
         .db
-        .create_invite_token(days, auto_approve, max_uses, created_by)
+        .create_invite_token(days, auto_approve, max_uses, created_by, None, None, None)
         .await?;
 
     let link_line = state
@@ -196,7 +216,7 @@ pub async fn handle_token_create_from_text(
          Режим: {}\n\
          Срок действия ссылки (invite): до {}\n\
          Лимит активаций по ссылке: {}\n\
-         (Срок доступа пользователя в telemt задаётся отдельно.)\n",
+         Лимиты пользователя: {}\n",
         token.token,
         link_line,
         format_mode(token.auto_approve),
@@ -205,6 +225,7 @@ pub async fn handle_token_create_from_text(
             .max_usage
             .map(|value| value.to_string())
             .unwrap_or_else(|| "без лимита".to_string()),
+        format_token_limits(&token),
     );
     bot.send_message(chat_id, response)
         .parse_mode(ParseMode::Html)

@@ -53,10 +53,27 @@ impl ApiTelemtBackend {
         &self,
         username: &str,
         desired_secret: &str,
+        expiration_days: Option<i32>,
+        max_unique_ips: Option<i32>,
+        data_quota_bytes: Option<i64>,
     ) -> Result<ProvisionedUser, anyhow::Error> {
+        let expiration = expiration_days.map(|days| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            let expiry_ts = now + (days as i64 * 24 * 60 * 60);
+            chrono::DateTime::from_timestamp(expiry_ts, 0)
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| "2025-12-31T23:59:59Z".to_string())
+        });
+
         let body = CreateUserRequest {
             username,
             secret: Some(desired_secret),
+            expiration,
+            max_unique_ips: max_unique_ips.map(|v| v as usize),
+            data_quota_bytes: data_quota_bytes.map(|v| v as u64),
         };
         let response = self
             .client

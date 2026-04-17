@@ -21,12 +21,16 @@ fn token_mode(auto_approve: bool) -> TokenMode {
 }
 
 impl Db {
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_invite_token(
         &self,
         days: i64,
         auto_approve: bool,
         max_usage: Option<i64>,
         created_by: Option<i64>,
+        default_expiration_days: Option<i32>,
+        default_max_unique_ips: Option<i32>,
+        default_data_quota_bytes: Option<i64>,
     ) -> Result<InviteToken, anyhow::Error> {
         let now = current_unix_timestamp()?;
         let ttl_seconds = days
@@ -40,8 +44,8 @@ impl Db {
         for _ in 0..8 {
             let token = generate_invite_token();
             let result = sqlx::query(
-                "INSERT INTO invite_tokens (token, created_at, expires_at, auto_approve, created_by, max_usage)
-                 VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO invite_tokens (token, created_at, expires_at, auto_approve, created_by, max_usage, default_expiration_days, default_max_unique_ips, default_data_quota_bytes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&token)
             .bind(now)
@@ -49,6 +53,9 @@ impl Db {
             .bind(auto_approve)
             .bind(created_by)
             .bind(max_usage)
+            .bind(default_expiration_days)
+            .bind(default_max_unique_ips)
+            .bind(default_data_quota_bytes)
             .execute(&self.pool)
             .await;
 
@@ -237,6 +244,9 @@ impl Db {
             created_by: row.created_by,
             usage_count: row.usage_count,
             max_usage: row.max_usage,
+            default_expiration_days: row.default_expiration_days,
+            default_max_unique_ips: row.default_max_unique_ips,
+            default_data_quota_bytes: row.default_data_quota_bytes,
         })
     }
 
@@ -282,9 +292,9 @@ mod tests {
     async fn create_invite_token_persists_active_token() -> Result<(), anyhow::Error> {
         let fixture = TestDb::new().await?;
 
-        let token = fixture
+let token = fixture
             .db
-            .create_invite_token(7, true, Some(3), Some(77))
+            .create_invite_token(7, true, Some(3), Some(77), None, None, None)
             .await?;
 
         assert_eq!(token.created_by, Some(77));
@@ -300,7 +310,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(2), Some(1))
+            .create_invite_token(7, false, Some(2), Some(1), None, None, None)
             .await?;
 
         let consumed = fixture.db.consume_invite_token(&token.token).await?;
@@ -323,7 +333,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(1), None)
+            .create_invite_token(7, false, Some(1), None, None, None, None)
             .await?;
         fixture.db.consume_invite_token(&token.token).await?;
 
@@ -338,7 +348,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, None, None)
+            .create_invite_token(7, false, None, None, None, None, None)
             .await?;
 
         assert!(fixture.db.revoke_invite_token_by_id(token.id).await?);
@@ -351,7 +361,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, true, Some(5), None)
+            .create_invite_token(7, true, Some(5), None, None, None, None)
             .await?;
 
         let peeked = fixture
@@ -374,7 +384,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(1), None)
+            .create_invite_token(7, false, Some(1), None, None, None, None)
             .await?;
         fixture.db.consume_invite_token(&token.token).await?;
 

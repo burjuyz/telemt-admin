@@ -22,6 +22,12 @@ pub(crate) struct CreateUserRequest<'a> {
     pub(crate) username: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) secret: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expiration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_unique_ips: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) data_quota_bytes: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

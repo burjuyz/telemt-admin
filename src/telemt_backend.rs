@@ -71,12 +71,17 @@ impl TelemtBackend {
         &self,
         username: &str,
         desired_secret: &str,
+        expiration_days: Option<i32>,
+        max_unique_ips: Option<i32>,
+        data_quota_bytes: Option<i64>,
     ) -> Result<ProvisionedUser, anyhow::Error> {
         match self.inner.as_ref() {
             TelemtBackendInner::Legacy(legacy) => {
                 legacy.provision_user(username, desired_secret).await
             }
-            TelemtBackendInner::Api(api) => api.provision_user(username, desired_secret).await,
+            TelemtBackendInner::Api(api) => {
+                api.provision_user(username, desired_secret, expiration_days, max_unique_ips, data_quota_bytes).await
+            }
         }
     }
 

@@ -80,6 +80,12 @@ impl Db {
             .await?;
         self.ensure_column_exists("invite_tokens", "revoked_at", "INTEGER")
             .await?;
+        self.ensure_column_exists("invite_tokens", "default_expiration_days", "INTEGER")
+            .await?;
+        self.ensure_column_exists("invite_tokens", "default_max_unique_ips", "INTEGER")
+            .await?;
+        self.ensure_column_exists("invite_tokens", "default_data_quota_bytes", "INTEGER")
+            .await?;
 
         sqlx::query(
             r#"

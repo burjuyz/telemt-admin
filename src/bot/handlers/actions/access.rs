@@ -259,11 +259,21 @@ pub async fn approve_request_and_build_link(
         None => return Ok(None),
     };
 
+    let (expiration_days, max_unique_ips, data_quota_bytes) = if let Some(token_id) = request.invite_token_id {
+        if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+            (token.default_expiration_days, token.default_max_unique_ips, token.default_data_quota_bytes)
+        } else {
+            (None, None, None)
+        }
+    } else {
+        (None, None, None)
+    };
+
     let telemt_user = telemt_username(request.tg_user_id);
     let user_secret = generate_user_secret();
     let provisioned = state
         .telemt_backend
-        .provision_user(&telemt_user, &user_secret)
+        .provision_user(&telemt_user, &user_secret, expiration_days, max_unique_ips, data_quota_bytes)
         .await?;
     if state
         .db
@@ -287,18 +297,22 @@ pub async fn approve_request_and_build_link(
     Ok(Some((request, proxy_link)))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn approve_user_direct_and_build_link(
     state: &BotState,
     tg_user_id: i64,
     tg_username: Option<&str>,
     tg_display_name: Option<&str>,
     invite_token_id: Option<i64>,
+    expiration_days: Option<i32>,
+    max_unique_ips: Option<i32>,
+    data_quota_bytes: Option<i64>,
 ) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     let secret = generate_user_secret();
     let provisioned = state
         .telemt_backend
-        .provision_user(&telemt_user, &secret)
+        .provision_user(&telemt_user, &secret, expiration_days, max_unique_ips, data_quota_bytes)
         .await?;
     state
         .db
@@ -469,6 +483,9 @@ pub async fn process_invite_token(
                 tg_username,
                 tg_display_name,
                 Some(consumed.id),
+                consumed.default_expiration_days,
+                consumed.default_max_unique_ips,
+                consumed.default_data_quota_bytes,
             )
             .await?;
             bot.send_message(
