@@ -241,6 +241,22 @@ impl Db {
         Ok(r.rows_affected() > 0)
     }
 
+    /// Очищает статус approved и сбрасывает данные пользователя (используется когда пользователь больше не существует в backend).
+    pub async fn clear_approved_status(&self, tg_user_id: i64) -> Result<bool, anyhow::Error> {
+        let r = sqlx::query(
+            "UPDATE registration_requests
+             SET status = ?, telemt_username = NULL, secret = NULL, last_synced_at = ?
+             WHERE tg_user_id = ? AND status = ?",
+        )
+        .bind(STATUS_DELETED)
+        .bind(current_unix_timestamp()?)
+        .bind(tg_user_id)
+        .bind(STATUS_APPROVED)
+        .execute(&self.pool)
+        .await?;
+        Ok(r.rows_affected() > 0)
+    }
+
     /// Устанавливает пользователя как approved (для /create без предварительной заявки).
     pub async fn set_approved(
         &self,

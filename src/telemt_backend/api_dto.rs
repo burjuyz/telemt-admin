@@ -36,7 +36,12 @@ pub(crate) struct UserInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct ApiUserInfo {
+    #[serde(default)]
+    pub(crate) username: Option<String>,
+    #[serde(default)]
+    pub(crate) in_runtime: Option<bool>,
     #[serde(default)]
     pub(crate) user_ad_tag: Option<String>,
     #[serde(default)]
@@ -47,15 +52,20 @@ pub(crate) struct ApiUserInfo {
     pub(crate) data_quota_bytes: Option<u64>,
     #[serde(default)]
     pub(crate) max_unique_ips: Option<usize>,
-    pub(crate) current_connections: u64,
-    pub(crate) active_unique_ips: usize,
     #[serde(default)]
-    pub(crate) active_unique_ips_list: Vec<String>,
-    pub(crate) recent_unique_ips: usize,
+    pub(crate) current_connections: Option<u64>,
     #[serde(default)]
-    pub(crate) recent_unique_ips_list: Vec<String>,
-    pub(crate) total_octets: u64,
-    pub(crate) links: UserLinks,
+    pub(crate) active_unique_ips: Option<usize>,
+    #[serde(default)]
+    pub(crate) active_unique_ips_list: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) recent_unique_ips: Option<usize>,
+    #[serde(default)]
+    pub(crate) recent_unique_ips_list: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) total_octets: Option<u64>,
+    #[serde(default)]
+    pub(crate) links: Option<UserLinks>,
 }
 
 #[derive(Debug, Deserialize)]

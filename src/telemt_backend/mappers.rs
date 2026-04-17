@@ -1,7 +1,5 @@
 use super::api_dto::{ApiUserInfo, RuntimeConnectionUserData, UserLinks};
-use super::types::{
-    TelemtBackendMode, TelemtConnectionTopUser, TelemtUserInfo,
-};
+use super::types::{TelemtBackendMode, TelemtConnectionTopUser, TelemtUserInfo};
 
 pub(super) fn pick_best_link(links: &UserLinks) -> Option<String> {
     links
@@ -30,13 +28,16 @@ pub(super) fn map_api_user_info(source: TelemtBackendMode, user: ApiUserInfo) ->
         expiration_rfc3339: user.expiration_rfc3339,
         data_quota_bytes: user.data_quota_bytes,
         max_unique_ips: user.max_unique_ips,
-        current_connections: Some(user.current_connections),
-        active_unique_ips: Some(user.active_unique_ips),
-        active_unique_ips_list: user.active_unique_ips_list,
-        recent_unique_ips: Some(user.recent_unique_ips),
-        recent_unique_ips_list: user.recent_unique_ips_list,
-        total_octets: Some(user.total_octets),
-        links: collect_links(&user.links),
+        current_connections: user.current_connections,
+        active_unique_ips: user.active_unique_ips,
+        active_unique_ips_list: user.active_unique_ips_list.unwrap_or_default(),
+        recent_unique_ips: user.recent_unique_ips,
+        recent_unique_ips_list: user.recent_unique_ips_list.unwrap_or_default(),
+        total_octets: user.total_octets,
+        links: user
+            .links
+            .map(|links| collect_links(&links))
+            .unwrap_or_default(),
     }
 }
 
@@ -50,9 +51,7 @@ pub(super) fn map_connection_top_user(user: RuntimeConnectionUserData) -> Telemt
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        collect_links, map_api_user_info, map_connection_top_user, pick_best_link,
-    };
+    use super::{collect_links, map_api_user_info, map_connection_top_user, pick_best_link};
     use crate::telemt_backend::api_dto::{ApiUserInfo, RuntimeConnectionUserData, UserLinks};
     use crate::telemt_backend::types::TelemtBackendMode;
 
@@ -77,7 +76,10 @@ mod tests {
             secure: Vec::new(),
             tls: Vec::new(),
         };
-        assert_eq!(pick_best_link(&classic_fallback).as_deref(), Some("classic"));
+        assert_eq!(
+            pick_best_link(&classic_fallback).as_deref(),
+            Some("classic")
+        );
         assert_eq!(
             pick_best_link(&UserLinks {
                 classic: Vec::new(),
@@ -110,22 +112,24 @@ mod tests {
     #[test]
     fn map_api_user_info_maps_runtime_fields() {
         let user = ApiUserInfo {
+            username: Some("tg_42".to_string()),
+            in_runtime: Some(true),
             user_ad_tag: Some("promo".to_string()),
             max_tcp_conns: Some(10),
             expiration_rfc3339: Some("2026-04-01T00:00:00Z".to_string()),
             data_quota_bytes: Some(2048),
             max_unique_ips: Some(3),
-            current_connections: 2,
-            active_unique_ips: 1,
-            active_unique_ips_list: vec!["1.1.1.1".to_string()],
-            recent_unique_ips: 2,
-            recent_unique_ips_list: vec!["1.1.1.1".to_string(), "2.2.2.2".to_string()],
-            total_octets: 4096,
-            links: UserLinks {
+            current_connections: Some(2),
+            active_unique_ips: Some(1),
+            active_unique_ips_list: Some(vec!["1.1.1.1".to_string()]),
+            recent_unique_ips: Some(2),
+            recent_unique_ips_list: Some(vec!["1.1.1.1".to_string(), "2.2.2.2".to_string()]),
+            total_octets: Some(4096),
+            links: Some(UserLinks {
                 classic: vec!["classic".to_string()],
                 secure: vec!["secure".to_string()],
                 tls: vec!["tls".to_string()],
-            },
+            }),
         };
 
         let mapped = map_api_user_info(TelemtBackendMode::ControlApi, user);

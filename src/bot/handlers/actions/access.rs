@@ -211,9 +211,35 @@ async fn send_existing_user_link_message(
     bot: &Bot,
     chat_id: ChatId,
     state: &BotState,
+    tg_user_id: i64,
     telemt_user: &str,
     secret: &str,
 ) -> HandlerResult {
+    if state.config.telemt_api.enabled {
+        if let Ok(Some(user_info)) = state.telemt_backend.get_user_info(telemt_user, None).await {
+            if user_info.links.is_empty() {
+                tracing::warn!(
+                    tg_user_id = tg_user_id,
+                    telemt_username = %telemt_user,
+                    "User exists in API but has no links (not in runtime yet)"
+                );
+            }
+        } else {
+            tracing::info!(
+                tg_user_id = tg_user_id,
+                telemt_username = %telemt_user,
+                "User not found in telemt API - clearing approved status from local DB"
+            );
+            state.db.clear_approved_status(tg_user_id).await?;
+            bot.send_message(
+                chat_id,
+                "Ваш доступ больше не активен. Для повторной регистрации введите новый invite-токен.",
+            )
+            .await?;
+            return Ok(());
+        }
+    }
+
     let secret_opt = (!secret.is_empty()).then_some(secret);
     let link = state
         .telemt_backend
@@ -321,7 +347,7 @@ pub async fn process_invite_token(
                 return Ok(());
             }
         }
-        send_existing_user_link_message(bot, msg.chat.id, state, &telemt_user, &secret).await?;
+        send_existing_user_link_message(bot, msg.chat.id, state, tg_user_id, &telemt_user, &secret).await?;
         clear_wizard_state(state, tg_user_id).await?;
         tracing::info!(
             tg_user_id = tg_user_id,
@@ -348,7 +374,7 @@ pub async fn process_invite_token(
                         .get_approved(tg_user_id)
                         .await?
                         .ok_or_else(|| anyhow::anyhow!("Пользователь импортирован, но запись approved не найдена"))?;
-                    send_existing_user_link_message(bot, msg.chat.id, state, &telemt_user, &secret)
+                    send_existing_user_link_message(bot, msg.chat.id, state, tg_user_id, &telemt_user, &secret)
                         .await?;
                     clear_wizard_state(state, tg_user_id).await?;
                     tracing::info!(
