@@ -60,6 +60,25 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
         .unwrap_or_else(|| "—".to_string());
     let expires_at = format_date(token.expires_at);
 
+    let limits_text = {
+        let mut parts = Vec::new();
+        if let Some(days) = token.default_expiration_days {
+            parts.push(format!("доступ {} дн.", days));
+        }
+        if let Some(ips) = token.default_max_unique_ips {
+            parts.push(format!("IP: {}", ips));
+        }
+        if let Some(quota) = token.default_data_quota_bytes {
+            let gb = quota as f64 / 1_073_741_824.0;
+            parts.push(format!("{:.1} GB", gb));
+        }
+        if parts.is_empty() {
+            "по умолчанию".to_string()
+        } else {
+            parts.join(", ")
+        }
+    };
+
     format!(
         "🎟 Invite-токен\n\n\
          🔑 {}\n\
@@ -68,13 +87,14 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
          📊 Активаций по ссылке: {}\n\
          👤 {}\n\
          📅 создан {}\n\n\
-         Срок доступа пользователя в telemt задаётся отдельно (карточка пользователя).",
+         📈 Лимиты пользователя: {}",
         token.token,
         mode,
         expires_at,
         usage,
         created_by,
         format_date(token.created_at),
+        limits_text,
     )
 }
 

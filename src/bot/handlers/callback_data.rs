@@ -68,6 +68,7 @@ pub enum CallbackAction {
     ShowUsageGuide,
     PromptInviteToken,
     CancelWizard,
+    BackTokenWizard,
     ShowPendingRequests,
     ShowPendingRequestsPage { page: i64 },
     OpenPendingRequest { request_id: i64, page: i64 },
@@ -129,6 +130,7 @@ impl CallbackAction {
             Self::ShowUsageGuide => "v1|user|guide".to_string(),
             Self::PromptInviteToken => "v1|user|invite".to_string(),
             Self::CancelWizard => "v1|wizard|cancel".to_string(),
+            Self::BackTokenWizard => "v1|wizard|back".to_string(),
             Self::ShowPendingRequests => "v1|admin|pending".to_string(),
             Self::ShowPendingRequestsPage { page } => format!("v1|admin|pending|page|{page}"),
             Self::OpenPendingRequest { request_id, page } => {
@@ -235,6 +237,7 @@ impl CallbackAction {
             ["v1", "user", "guide"] => Some(Self::ShowUsageGuide),
             ["v1", "user", "invite"] => Some(Self::PromptInviteToken),
             ["v1", "wizard", "cancel"] => Some(Self::CancelWizard),
+            ["v1", "wizard", "back"] => Some(Self::BackTokenWizard),
             ["v1", "admin", "pending"] => Some(Self::ShowPendingRequests),
             ["v1", "admin", "pending", "page", page] => Some(Self::ShowPendingRequestsPage {
                 page: parse_i64(page)?.max(1),

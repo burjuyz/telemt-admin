@@ -3,6 +3,8 @@ use super::actions::{
     import_remote_user_by_tg_id, open_token_from_lookup_input, open_user_from_lookup_input,
     process_invite_token, prompt_delete_confirmation,
 };
+use super::callback_data::CallbackAction;
+use super::keyboards;
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
@@ -263,6 +265,7 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                         days
                     ),
                 )
+                .reply_markup(keyboards::cancel_keyboard(CallbackAction::BackTokenWizard))
                 .await?;
             } else {
                 bot.send_message(
@@ -297,10 +300,11 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                 msg.chat.id,
                 format!(
                     "Лимит IP: {}.\n\nТеперь введите квоту трафика в GB (например: 10) \
-                     или пропустите отправив /skip",
+                     или пропустите отправив /skip (0 = безлимит)",
                     ips_text
                 ),
             )
+            .reply_markup(keyboards::cancel_keyboard(CallbackAction::BackTokenWizard))
             .await?;
         }
         Some(WizardState::AdminTokenAwaitingDataQuota {
@@ -309,7 +313,7 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
             max_unique_ips,
         }) => {
             let text = text.trim();
-            let data_quota_bytes = if text == "/skip" {
+            let data_quota_bytes = if text == "/skip" || text == "0" {
                 None
             } else {
                 text.parse::<i64>()
