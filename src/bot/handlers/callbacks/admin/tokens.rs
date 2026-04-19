@@ -105,7 +105,6 @@ pub async fn handle(
                 Some(gb) => format!("{} GB", gb),
                 None => "другое...".to_string(),
             };
-            ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
 
             let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
 
@@ -132,6 +131,9 @@ pub async fn handle(
             )
             .reply_markup(keyboards::token_group_picker_keyboard(&groups))
             .await?;
+
+            ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
+
             Ok(true)
         }
         CallbackAction::TokenAssignGroup { group_id } => {
