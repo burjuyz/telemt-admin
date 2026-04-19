@@ -138,6 +138,9 @@ pub enum CallbackAction {
         expiration_days: i32,
         max_unique_ips: Option<i32>,
     },
+    TokenAssignGroup {
+        group_id: i64,
+    },
     ShowTokenList,
     ShowTokenListPage {
         page: i64,
@@ -301,6 +304,9 @@ impl CallbackAction {
                 let quota_str = quota_gb.map(|q| q.to_string()).unwrap_or_else(|| "none".to_string());
                 let ips_str = max_unique_ips.map(|i| i.to_string()).unwrap_or_else(|| "none".to_string());
                 format!("v1|admin|token|quota|{}|{}|{}|{}", expiration_days, auto_approve, ips_str, quota_str)
+            }
+            Self::TokenAssignGroup { group_id } => {
+                format!("v1|admin|token|assign_group|{}", group_id)
             }
             Self::ShowTokenList => "v1|admin|token|list".to_string(),
             Self::ShowTokenListPage { page } => format!("v1|admin|token|page|{page}"),
@@ -485,6 +491,29 @@ impl CallbackAction {
                     expiration_days: parse_i64(expiration_days)? as i32,
                 })
 }
+            ["v1", "admin", "token", "quota", expiration_days, auto_approve, ips, quota] => {
+                let max_ips = if *ips == "none" {
+                    None
+                } else {
+                    Some(parse_i64(ips)? as i32)
+                };
+                let quota_gb = if *quota == "none" {
+                    None
+                } else {
+                    Some(parse_i64(quota)?)
+                };
+                Some(Self::SetTokenDataQuota {
+                    quota_gb,
+                    auto_approve: *auto_approve == "1",
+                    expiration_days: parse_i64(expiration_days)? as i32,
+                    max_unique_ips: max_ips,
+                })
+            }
+            ["v1", "admin", "token", "assign_group", group_id] => {
+                Some(Self::TokenAssignGroup {
+                    group_id: parse_i64(group_id)?,
+                })
+            }
             ["v1", "admin", "token", "list"] => Some(Self::ShowTokenList),
             ["v1", "admin", "token", "page", page] => Some(Self::ShowTokenListPage {
                 page: parse_i64(page)?.max(1),

@@ -1002,3 +1002,31 @@ pub fn confirm_user_ban_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMa
         ),
     ]])
 }
+
+pub fn token_group_picker_keyboard(groups: &[crate::db::UserGroup]) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "➕ Создать новую группу",
+        CallbackAction::PromptCreateGroup.encode(),
+    )]);
+
+    for g in groups {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("📁 {}", g.name),
+            CallbackAction::TokenAssignGroup { group_id: g.id }.encode(),
+        )]);
+    }
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "🚫 Без группы",
+        CallbackAction::TokenAssignGroup { group_id: 0 }.encode(),
+    )]);
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ Назад",
+        CallbackAction::BackTokenWizard.encode(),
+    )]);
+
+    InlineKeyboardMarkup::new(rows)
+}

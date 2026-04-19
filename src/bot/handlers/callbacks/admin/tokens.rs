@@ -6,7 +6,7 @@ use crate::bot::handlers::screens::{
     admin_show_token_list_page, show_token_card, show_token_menu, show_token_revoke_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
-use crate::bot::handlers::state::{BotState, WizardState};
+use crate::bot::handlers::state::{clear_wizard_state, BotState, WizardState};
 use crate::bot::keyboards;
 use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
@@ -106,9 +106,9 @@ pub async fn handle(
                 None => "другое...".to_string(),
             };
             ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
-            
+
             let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
-            
+
             let new_state = WizardState::AdminTokenAwaitingGroup {
                 auto_approve,
                 expiration_days,
@@ -116,18 +116,116 @@ pub async fn handle(
                 data_quota_bytes,
             };
             replace_wizard_state(state, admin_id, new_state).await?;
-            
+
+            let groups = state.db.list_user_groups().await?;
+
             bot.edit_message_text(
                 chat_id,
                 message_id,
                 format!(
                     "Срок доступа: {} дн.\nЛимит IP: {}\nКвота: {}\n\n\
-                     Введите ID группы для токена (или 0 для без группы):",
+                     Выберите группу для токена:",
                     expiration_days,
                     max_unique_ips.map(|i| i.to_string()).unwrap_or_else(|| "—".to_string()),
                     quota_text
                 ),
             )
+            .reply_markup(keyboards::token_group_picker_keyboard(&groups))
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::TokenAssignGroup { group_id } => {
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+
+            let wizard = crate::bot::handlers::state::wizard_state(state, admin_id).await?;
+            let (auto_approve, expiration_days, max_unique_ips, data_quota_bytes) = match wizard {
+                Some(WizardState::AdminTokenAwaitingGroup {
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                    data_quota_bytes,
+                }) => (auto_approve, expiration_days, max_unique_ips, data_quota_bytes),
+                _ => {
+                    ack_callback(bot, q.id.clone(), Some("Ошибка: неверное состояние"), true).await?;
+                    return Ok(true);
+                }
+            };
+
+            ack_callback(bot, q.id.clone(), None, false).await?;
+
+            clear_wizard_state(state, admin_id).await?;
+
+            let final_group_id = if group_id == 0 { None } else { Some(group_id) };
+
+            let token = state
+                .db
+                .create_invite_token(
+                    30,
+                    auto_approve,
+                    None,
+                    Some(admin_id),
+                    Some(expiration_days),
+                    max_unique_ips,
+                    data_quota_bytes,
+                    final_group_id,
+                )
+                .await?;
+
+            let group_name = if let Some(id) = final_group_id {
+                state.db.get_user_group_by_id(id).await?
+                    .map(|g| g.name)
+                    .unwrap_or_else(|| format!("ID {}", id))
+            } else {
+                "без группы".to_string()
+            };
+
+            let link_line = state
+                .bot_username
+                .as_deref()
+                .map(|bot_username| {
+                    crate::bot::handlers::shared::build_bot_start_link(bot_username, &token.token)
+                })
+                .map(|link| format!("Ссылка: {}\n", link))
+                .unwrap_or_else(|| "Ссылка: недоступна\n".to_string());
+
+            let limits_text = {
+                let mut parts = Vec::new();
+                if let Some(days) = token.default_expiration_days {
+                    parts.push(format!("доступ {} дн.", days));
+                }
+                if let Some(ips) = token.default_max_unique_ips {
+                    parts.push(format!("IP: {}", ips));
+                }
+                if let Some(quota) = token.default_data_quota_bytes {
+                    let gb = quota as f64 / 1_073_741_824.0;
+                    parts.push(format!("{:.1} GB", gb));
+                }
+                parts.push(format!("группа: {}", group_name));
+                if parts.is_empty() {
+                    "по умолчанию".to_string()
+                } else {
+                    parts.join(", ")
+                }
+            };
+
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                format!(
+                    "✅ Invite-токен создан:\n\
+                     Код: <code>{}</code>\n\
+                     {}\
+                     Режим: {}\n\
+                     Лимиты пользователя: {}",
+                    token.token,
+                    link_line,
+                    if auto_approve { "AUTO" } else { "MANUAL" },
+                    limits_text,
+                ),
+            )
+            .parse_mode(teloxide::types::ParseMode::Html)
             .await?;
             Ok(true)
         }
