@@ -1030,3 +1030,31 @@ pub fn token_group_picker_keyboard(groups: &[crate::db::UserGroup]) -> InlineKey
 
     InlineKeyboardMarkup::new(rows)
 }
+
+pub fn token_edit_group_picker_keyboard(token_id: i64, page: i64, groups: &[crate::db::UserGroup]) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "➕ Создать новую группу",
+        CallbackAction::PromptCreateGroup.encode(),
+    )]);
+
+    for g in groups {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("📁 {}", g.name),
+            CallbackAction::ExecuteEditTokenGroup { token_id, group_id: g.id, page }.encode(),
+        )]);
+    }
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "🚫 Убрать группу",
+        CallbackAction::ExecuteEditTokenGroup { token_id, group_id: 0, page }.encode(),
+    )]);
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ Назад к токену",
+        CallbackAction::OpenTokenCard { token_id, page }.encode(),
+    )]);
+
+    InlineKeyboardMarkup::new(rows)
+}

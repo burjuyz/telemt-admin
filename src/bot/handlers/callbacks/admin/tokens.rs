@@ -272,18 +272,55 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::PromptEditTokenGroup { token_id, page } => {
-            start_wizard_from_callback(
-                bot,
-                q,
-                state,
-                CallbackAction::PromptEditTokenGroup { token_id, page },
-                "Жду ID группы",
-                "Введите ID группы для токена:\n\
-                 • ID группы (например, 1, 2, 3)\n\
-                 • 0 — убрать группу\n\n\
-                 Текущую группу токена можно посмотреть в его карточке.".to_string(),
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+
+            let wizard_state = WizardState::AdminEditTokenGroup { token_id, page };
+            crate::bot::handlers::state::set_wizard_state(state, admin_id, wizard_state).await?;
+
+            let groups = state.db.list_user_groups().await?;
+
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                "Выберите группу для токена:",
             )
+            .reply_markup(keyboards::token_edit_group_picker_keyboard(token_id, page, &groups))
             .await?;
+            Ok(true)
+        }
+        CallbackAction::ExecuteEditTokenGroup { token_id, group_id, page } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+
+            let admin_id = q.from.id.0 as i64;
+            crate::bot::handlers::state::clear_wizard_state(state, admin_id).await?;
+
+            let new_group_id = if group_id == 0 { None } else { Some(group_id) };
+            let updated = state.db.update_invite_token_group(token_id, new_group_id).await?;
+
+            if !updated {
+                ack_callback(bot, q.id.clone(), Some("Не удалось обновить группу токена"), true).await?;
+                return Ok(true);
+            }
+
+            let group_name = if let Some(id) = new_group_id {
+                state.db.get_user_group_by_id(id).await?
+                    .map(|g| g.name)
+                    .unwrap_or_else(|| format!("ID {}", id))
+            } else {
+                "без группы".to_string()
+            };
+
+            ack_callback(bot, q.id.clone(), Some(&format!("Группа: {}", group_name)), false).await?;
+
+            let token = state.db.get_active_invite_token_by_id(token_id).await?;
+            if let Some(token) = token {
+                show_token_card(bot, chat_id, Some(message_id), &token, page).await?;
+            }
             Ok(true)
         }
         CallbackAction::SendTokenStartLink { token_id } => {
