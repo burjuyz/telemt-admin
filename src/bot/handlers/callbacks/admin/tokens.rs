@@ -27,19 +27,21 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::PromptTokenCreate { auto_approve } => {
-            start_wizard_from_callback(
-                bot,
-                q,
-                state,
-                CallbackAction::PromptTokenCreate { auto_approve },
-                "Жду параметры токена",
-                "Введите срок доступа пользователя в днях:\n\
-                 • 30 дней\n\
-                 • 60 дней\n\
-                 • 180 дней\n\
-                 • или другое число (1-365)".to_string(),
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+
+            let wizard_state = WizardState::AdminTokenAwaitingExpiration { auto_approve };
+            replace_wizard_state(state, admin_id, wizard_state).await?;
+
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                "Выберите срок доступа:",
             )
+            .reply_markup(keyboards::token_expiration_keyboard(auto_approve))
             .await?;
+
             Ok(true)
         }
         CallbackAction::SetTokenExpiration { days, auto_approve } => {

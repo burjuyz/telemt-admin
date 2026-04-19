@@ -740,10 +740,6 @@ pub fn token_expiration_keyboard(auto_approve: bool) -> InlineKeyboardMarkup {
             ),
         ],
         vec![InlineKeyboardButton::callback(
-            "📝 Другое...",
-            CallbackAction::PromptTokenCreate { auto_approve }.encode(),
-        )],
-        vec![InlineKeyboardButton::callback(
             "⬅️ Отмена",
             CallbackAction::ShowTokenMenu.encode(),
         )],
