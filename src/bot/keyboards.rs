@@ -489,7 +489,7 @@ pub fn users_page_keyboard(
         rows.push(vec![
             InlineKeyboardButton::callback(
                 "📁 В группу",
-                CallbackAction::ShowGroupsMenu.encode(),
+                CallbackAction::BulkAssignGroupPrompt.encode(),
             ),
             InlineKeyboardButton::callback(
                 "⛔ Бан",
