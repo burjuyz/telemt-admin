@@ -5,6 +5,11 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to release'
+        required: true
+        default: 'v0.2.8'
 
 permissions:
   contents: write
@@ -163,3 +168,4 @@ jobs:
           files: dist/*
           generate_release_notes: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
