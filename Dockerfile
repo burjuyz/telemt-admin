@@ -9,7 +9,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git/db \
     <<'EOF'
 set -eux
-cargo build --release --locked
+cargo build --release
 strip target/release/telemt-admin
 EOF
 
