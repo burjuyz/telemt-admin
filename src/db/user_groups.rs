@@ -130,6 +130,7 @@ impl Db {
         Ok(n)
     }
 
+    #[allow(dead_code)]
     pub async fn get_groups_for_users(
         &self,
         tg_user_ids: &[i64],

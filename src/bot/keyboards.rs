@@ -421,7 +421,7 @@ pub fn users_page_keyboard(
         
         rows.push(vec![
             InlineKeyboardButton::callback(
-                format!("{}", prefix),
+                prefix.to_string(),
                 select_action.encode(),
             ),
             InlineKeyboardButton::callback(
