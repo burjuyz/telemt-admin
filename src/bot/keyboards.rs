@@ -406,14 +406,29 @@ pub fn users_page_keyboard(
     for (tg_user_id, title) in users {
         let is_selected = selected_users.contains(tg_user_id);
         let prefix = if is_selected { "☑️" } else { "⬜" };
-        rows.push(vec![InlineKeyboardButton::callback(
-            format!("{} {} {}", prefix, title, if is_selected { "✓" } else { "" }),
-            CallbackAction::ToggleUserSelection {
-                tg_user_id: *tg_user_id,
-                page,
-            }
-            .encode(),
-        )]);
+        
+        let (select_action, open_action) = if let Some(group_id) = filter_group_id {
+            (
+                CallbackAction::ToggleUserSelectionByGroup { tg_user_id: *tg_user_id, page, group_id },
+                CallbackAction::OpenUserCard { tg_user_id: *tg_user_id, page }
+            )
+        } else {
+            (
+                CallbackAction::ToggleUserSelection { tg_user_id: *tg_user_id, page },
+                CallbackAction::OpenUserCard { tg_user_id: *tg_user_id, page }
+            )
+        };
+        
+        rows.push(vec![
+            InlineKeyboardButton::callback(
+                format!("{}", prefix),
+                select_action.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                format!("👤 {}", title),
+                open_action.encode(),
+            ),
+        ]);
     }
 
     let total_pages = total_pages.max(1);
@@ -456,6 +471,25 @@ pub fn users_page_keyboard(
                 CallbackAction::Noop
             },
         ));
+    }
+
+    let has_selection = !selected_users.is_empty();
+
+    if has_selection {
+        rows.push(vec![
+            InlineKeyboardButton::callback(
+                "📁 В группу",
+                CallbackAction::ShowGroupsMenu.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⛔ Бан",
+                CallbackAction::BulkBanUsers.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "📤 CSV",
+                CallbackAction::ExportUsersCsv.encode(),
+            ),
+        ]);
     }
 
     rows.push(vec![

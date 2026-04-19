@@ -55,6 +55,23 @@ pub async fn handle(
             admin_show_users_page(bot, chat_id, state, page, Some(message_id)).await?;
             Ok(true)
         }
+        CallbackAction::ToggleUserSelectionByGroup { tg_user_id, page, group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            {
+                let mut selected = state.selected_users.lock().unwrap();
+                if selected.contains(&tg_user_id) {
+                    selected.remove(&tg_user_id);
+                } else {
+                    selected.insert(tg_user_id);
+                }
+            }
+            let count = state.selected_users.lock().unwrap().len();
+            ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {}", count)), false).await?;
+            admin_show_users_page_by_group(bot, chat_id, state, page, group_id, Some(message_id)).await?;
+            Ok(true)
+        }
         CallbackAction::ClearUserSelection => {
             let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);

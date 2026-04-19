@@ -121,6 +121,7 @@ pub enum CallbackAction {
     PromptImportUser,
     ShowGroupMembers { group_id: i64 },
     ToggleUserSelection { tg_user_id: i64, page: i64 },
+    ToggleUserSelectionByGroup { tg_user_id: i64, page: i64, group_id: i64 },
     ClearUserSelection,
     ShowUserSelectionActions,
     BulkAssignGroup { group_id: i64 },
@@ -233,6 +234,9 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
             Self::ShowGroupMembers { group_id } => format!("v1|admin|groups|members|{}", group_id),
             Self::ToggleUserSelection { tg_user_id, page } => {
                 format!("v1|admin|users|select|{}|{}", tg_user_id, page)
+            }
+            Self::ToggleUserSelectionByGroup { tg_user_id, page, group_id } => {
+                format!("v1|admin|users|select|{}|{}|g|{}", tg_user_id, page, group_id)
             }
             Self::ClearUserSelection => "v1|admin|users|select|clear".to_string(),
             Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
@@ -406,6 +410,11 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
             ["v1", "admin", "users", "select", tg_user_id, page] => Some(Self::ToggleUserSelection {
                 tg_user_id: parse_i64(tg_user_id)?,
                 page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "users", "select", tg_user_id, page, "g", group_id] => Some(Self::ToggleUserSelectionByGroup {
+                tg_user_id: parse_i64(tg_user_id)?,
+                page: parse_i64(page)?.max(1),
+                group_id: parse_i64(group_id)?,
             }),
             ["v1", "admin", "users", "bulk", "group", group_id] => Some(Self::BulkAssignGroup {
                 group_id: parse_i64(group_id)?,
