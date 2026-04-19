@@ -86,6 +86,7 @@ pub struct InviteToken {
     /// Default data quota in bytes for user (applied when user activates token).
     pub default_data_quota_bytes: Option<i64>,
     /// Default group ID for user (applied when user activates token).
+    #[allow(dead_code)]
     pub default_group_id: Option<i64>,
 }
 

@@ -783,7 +783,7 @@ pub fn token_data_quota_keyboard(
             InlineKeyboardButton::callback(
                 "1 GB",
                 CallbackAction::SetTokenDataQuota { 
-                    quota_gb: Some(1 * 1024 * 1024 * 1024),
+                    quota_gb: Some(1024 * 1024 * 1024),
                     auto_approve,
                     expiration_days,
                     max_unique_ips,
