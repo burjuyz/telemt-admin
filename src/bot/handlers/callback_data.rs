@@ -123,6 +123,7 @@ pub enum CallbackAction {
     ToggleUserSelection { tg_user_id: i64, page: i64 },
     ToggleUserSelectionByGroup { tg_user_id: i64, page: i64, group_id: i64 },
     ClearUserSelection,
+    ClearUserSelectionAndReturn,
     ShowUserSelectionActions,
     BulkAssignGroup { group_id: i64 },
     BulkSetUserLimit { field: UserLimitField },
@@ -239,6 +240,7 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
                 format!("v1|admin|users|select|{}|{}|g|{}", tg_user_id, page, group_id)
             }
             Self::ClearUserSelection => "v1|admin|users|select|clear".to_string(),
+            Self::ClearUserSelectionAndReturn => "v1|admin|users|select|clear|return".to_string(),
             Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
             Self::BulkAssignGroup { group_id } => {
                 format!("v1|admin|users|bulk|group|{}", group_id)
@@ -406,6 +408,7 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
                 group_id: parse_i64(group_id)?,
             }),
             ["v1", "admin", "users", "select", "clear"] => Some(Self::ClearUserSelection),
+            ["v1", "admin", "users", "select", "clear", "return"] => Some(Self::ClearUserSelectionAndReturn),
             ["v1", "admin", "users", "select", "actions"] => Some(Self::ShowUserSelectionActions),
             ["v1", "admin", "users", "select", tg_user_id, page] => Some(Self::ToggleUserSelection {
                 tg_user_id: parse_i64(tg_user_id)?,

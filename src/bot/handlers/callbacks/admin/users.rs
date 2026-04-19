@@ -84,6 +84,18 @@ pub async fn handle(
             admin_show_users_page(bot, chat_id, state, 1, Some(message_id)).await?;
             Ok(true)
         }
+        CallbackAction::ClearUserSelectionAndReturn => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            {
+                let mut selected = state.selected_users.lock().unwrap();
+                selected.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some("Выбор очищен"), false).await?;
+            admin_show_users_page_by_group(bot, chat_id, state, 1, 0, Some(message_id)).await?;
+            Ok(true)
+        }
         CallbackAction::ShowUserSelectionActions => {
             let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);
