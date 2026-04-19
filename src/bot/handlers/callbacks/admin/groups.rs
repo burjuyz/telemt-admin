@@ -2,7 +2,7 @@ use super::super::common::{ack_callback, admin_callback_target};
 use super::AdminActionResult;
 use crate::bot::handlers::actions::groups::{apply_group_expiry_to_members, deactivate_all_members};
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::screens::{admin_show_group_card, admin_show_groups_menu, admin_show_users_page_by_group};
+use crate::bot::handlers::screens::{admin_show_group_card, admin_show_groups_menu, admin_show_users_page, admin_show_users_page_by_group};
 use crate::bot::handlers::state::{BotState, WizardState, set_wizard_state};
 use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
@@ -19,7 +19,7 @@ pub async fn handle(
                 return Ok(true);
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
-            admin_show_groups_menu(bot, chat_id, Some(message_id), state).await?;
+            admin_show_groups_menu(bot, chat_id, Some(message_id), state, false).await?;
             Ok(true)
         }
         CallbackAction::OpenGroupCard { group_id } => {
@@ -50,6 +50,48 @@ pub async fn handle(
                 false,
             ).await?;
             admin_show_users_page_by_group(bot, chat_id, state, 1, group_id, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::BulkAssignGroupPrompt => {
+            let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let count = {
+                let guard = state.selected_users.lock().unwrap();
+                guard.len()
+            };
+            if count == 0 {
+                ack_callback(bot, q.id.clone(), Some("Сначала выберите пользователей"), false).await?;
+                return Ok(true);
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {} пользователей. Выберите группу:", count)), false).await?;
+            admin_show_groups_menu(bot, chat_id, None, state, true).await?;
+            Ok(true)
+        }
+        CallbackAction::SelectGroupForBulkAssign { group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let selected: Vec<i64> = {
+                let guard = state.selected_users.lock().unwrap();
+                guard.iter().copied().collect()
+            };
+            if selected.is_empty() {
+                ack_callback(bot, q.id.clone(), Some("Нет выбранных пользователей"), false).await?;
+                return Ok(true);
+            }
+            for tg_user_id in &selected {
+                state.db.set_user_group_membership(*tg_user_id, Some(group_id)).await?;
+            }
+            let count = selected.len();
+            let group = state.db.get_user_group_by_id(group_id).await?;
+            let group_name = group.map(|g| g.name).unwrap_or_else(|| "группу".to_string());
+            {
+                let mut guard = state.selected_users.lock().unwrap();
+                guard.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Добавлено {} пользователей в «{}»", count, group_name)), false).await?;
+            admin_show_users_page(bot, chat_id, state, 1, Some(message_id)).await?;
             Ok(true)
         }
         CallbackAction::PromptCreateGroup => {
@@ -131,7 +173,7 @@ pub async fn handle(
                 group.name
             );
             bot.edit_message_text(chat_id, message_id, text)
-                .reply_markup(crate::bot::keyboards::groups_menu_keyboard(&groups))
+                .reply_markup(crate::bot::keyboards::groups_menu_keyboard(&groups, false))
                 .await?;
             Ok(true)
         }

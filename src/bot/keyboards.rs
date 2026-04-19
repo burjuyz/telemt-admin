@@ -135,13 +135,23 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
     ])
 }
 
-pub fn groups_menu_keyboard(groups: &[crate::db::UserGroup]) -> InlineKeyboardMarkup {
+pub fn groups_menu_keyboard(
+    groups: &[crate::db::UserGroup],
+    selection_mode: bool,
+) -> InlineKeyboardMarkup {
     let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for g in groups {
-        rows.push(vec![InlineKeyboardButton::callback(
-            format!("📁 {}", g.name),
-            CallbackAction::OpenGroupCard { group_id: g.id }.encode(),
-        )]);
+        if selection_mode {
+            rows.push(vec![InlineKeyboardButton::callback(
+                format!("📁 {}", g.name),
+                CallbackAction::SelectGroupForBulkAssign { group_id: g.id }.encode(),
+            )]);
+        } else {
+            rows.push(vec![InlineKeyboardButton::callback(
+                format!("📁 {}", g.name),
+                CallbackAction::OpenGroupCard { group_id: g.id }.encode(),
+            )]);
+        }
     }
     rows.push(vec![InlineKeyboardButton::callback(
         "➕ Новая группа",

@@ -1208,19 +1208,28 @@ pub async fn admin_show_groups_menu(
     chat_id: ChatId,
     message_id: Option<MessageId>,
     state: &BotState,
+    selection_mode: bool,
 ) -> HandlerResult {
     let groups = state.db.list_user_groups().await?;
     let text = if groups.is_empty() {
-        "📁 Группы пользователей\n\nПока нет ни одной группы. Нажмите «Новая группа».".to_string()
+        if selection_mode {
+            "📁 Выберите группу для выбранных пользователей\n\nПока нет ни одной группы.".to_string()
+        } else {
+            "📁 Группы пользователей\n\nПока нет ни одной группы. Нажмите «Новая группа».".to_string()
+        }
     } else {
-        "📁 Группы пользователей\n\nВыберите группу или создайте новую.".to_string()
+        if selection_mode {
+            "📁 Выберите группу для выбранных пользователей".to_string()
+        } else {
+            "📁 Группы пользователей\n\nВыберите группу или создайте новую.".to_string()
+        }
     };
     upsert_screen(
         bot,
         chat_id,
         message_id,
         text,
-        crate::bot::keyboards::groups_menu_keyboard(&groups),
+        crate::bot::keyboards::groups_menu_keyboard(&groups, selection_mode),
     )
     .await
 }

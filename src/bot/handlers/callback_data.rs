@@ -126,6 +126,8 @@ pub enum CallbackAction {
     ClearUserSelectionAndReturn,
     ShowUserSelectionActions,
     BulkAssignGroup { group_id: i64 },
+    BulkAssignGroupPrompt,
+    SelectGroupForBulkAssign { group_id: i64 },
     BulkSetUserLimit { field: UserLimitField },
     BulkBanUsers,
     ExportUsersCsv,
@@ -245,6 +247,8 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
             Self::BulkAssignGroup { group_id } => {
                 format!("v1|admin|users|bulk|group|{}", group_id)
             }
+            Self::BulkAssignGroupPrompt => "v1|admin|users|bulk|group|prompt".to_string(),
+            Self::SelectGroupForBulkAssign { group_id } => format!("v1|admin|users|bulk|group|select|{}", group_id),
             Self::BulkSetUserLimit { field } => {
                 format!("v1|admin|users|bulk|limit|{}", field.as_str())
             }
@@ -419,6 +423,10 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
                 page: parse_i64(page)?.max(1),
                 group_id: parse_i64(group_id)?,
             }),
+            ["v1", "admin", "users", "bulk", "group", "select", group_id] => Some(Self::SelectGroupForBulkAssign {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "users", "bulk", "group", "prompt"] => Some(Self::BulkAssignGroupPrompt),
             ["v1", "admin", "users", "bulk", "group", group_id] => Some(Self::BulkAssignGroup {
                 group_id: parse_i64(group_id)?,
             }),
