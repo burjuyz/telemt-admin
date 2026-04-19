@@ -196,7 +196,7 @@ pub async fn handle_token_create_from_text(
 
     let token = state
         .db
-        .create_invite_token(days, auto_approve, max_uses, created_by, None, None, None)
+        .create_invite_token(days, auto_approve, max_uses, created_by, None, None, None, None)
         .await?;
 
     let link_line = state

@@ -1,4 +1,4 @@
-use super::super::common::{ack_callback, admin_callback_target, start_wizard_from_callback};
+use super::super::common::{ack_callback, admin_callback_target, replace_wizard_state, start_wizard_from_callback};
 use super::AdminActionResult;
 use crate::bot::handlers::actions::send_token_start_link;
 use crate::bot::handlers::callback_data::CallbackAction;
@@ -6,8 +6,10 @@ use crate::bot::handlers::screens::{
     admin_show_token_list_page, show_token_card, show_token_menu, show_token_revoke_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
-use crate::bot::handlers::state::BotState;
-use teloxide::prelude::{Bot, CallbackQuery};
+use crate::bot::handlers::state::{BotState, WizardState};
+use crate::bot::keyboards;
+use teloxide::payloads::EditMessageTextSetters;
+use teloxide::prelude::{Bot, CallbackQuery, Requester};
 
 pub async fn handle(
     bot: &Bot,
@@ -25,30 +27,106 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::PromptTokenCreate { auto_approve } => {
-            let prompt_text = if auto_approve {
-                "Создание авто-токена.\n\n\
-                 Введите срок доступа пользователя в днях:\n\
-                 • 30 дней\n\
-                 • 60 дней\n\
-                 • 180 дней\n\
-                 • или другое число (1-365)"
-                    .to_string()
-            } else {
-                "Создание invite-токена.\n\n\
-                 Введите срок доступа пользователя в днях:\n\
-                 • 30 дней\n\
-                 • 60 дней\n\
-                 • 180 дней\n\
-                 • или другое число (1-365)"
-                    .to_string()
-            };
             start_wizard_from_callback(
                 bot,
                 q,
                 state,
                 CallbackAction::PromptTokenCreate { auto_approve },
                 "Жду параметры токена",
-                prompt_text,
+                "Введите срок доступа пользователя в днях:\n\
+                 • 30 дней\n\
+                 • 60 дней\n\
+                 • 180 дней\n\
+                 • или другое число (1-365)".to_string(),
+            )
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::SetTokenExpiration { days, auto_approve } => {
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), Some(&format!("Срок: {} дн.", days)), false).await?;
+            
+            let new_state = WizardState::AdminTokenAwaitingMaxIps {
+                auto_approve,
+                expiration_days: Some(days),
+            };
+            replace_wizard_state(state, admin_id, new_state).await?;
+            
+            let keyboard = keyboards::token_max_ips_keyboard(auto_approve, days);
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                format!(
+                    "Срок доступа: {} дн.\n\n\
+                     Теперь выберите лимит IP (Max Unique IPs):",
+                    days
+                ),
+            )
+            .reply_markup(keyboard)
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::SetTokenMaxIps { count, auto_approve, expiration_days } => {
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let ip_text = count.map(|c| c.to_string()).unwrap_or_else(|| "без лимита".to_string());
+            ack_callback(bot, q.id.clone(), Some(&format!("IP: {}", ip_text)), false).await?;
+            
+            let new_state = WizardState::AdminTokenAwaitingDataQuota {
+                auto_approve,
+                expiration_days: Some(expiration_days),
+                max_unique_ips: count,
+            };
+            replace_wizard_state(state, admin_id, new_state).await?;
+            
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                format!(
+                    "Срок доступа: {} дн.\nЛимит IP: {}\n\n\
+                     Теперь выберите квоту трафика:",
+                    expiration_days,
+                    ip_text
+                ),
+            )
+            .reply_markup(keyboards::token_data_quota_keyboard(auto_approve, expiration_days, count))
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::SetTokenDataQuota { quota_gb, auto_approve, expiration_days, max_unique_ips } => {
+            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let quota_text = match quota_gb {
+                Some(0) => "безлимит".to_string(),
+                Some(gb) => format!("{} GB", gb),
+                None => "другое...".to_string(),
+            };
+            ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
+            
+            let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
+            
+            let new_state = WizardState::AdminTokenAwaitingGroup {
+                auto_approve,
+                expiration_days,
+                max_unique_ips,
+                data_quota_bytes,
+            };
+            replace_wizard_state(state, admin_id, new_state).await?;
+            
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                format!(
+                    "Срок доступа: {} дн.\nЛимит IP: {}\nКвота: {}\n\n\
+                     Введите ID группы для токена (или 0 для без группы):",
+                    expiration_days,
+                    max_unique_ips.map(|i| i.to_string()).unwrap_or_else(|| "—".to_string()),
+                    quota_text
+                ),
             )
             .await?;
             Ok(true)
@@ -93,6 +171,21 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), Some("Открыта карточка токена"), false).await?;
             show_token_card(bot, chat_id, Some(message_id), &token, page).await?;
+            Ok(true)
+        }
+        CallbackAction::PromptEditTokenGroup { token_id, page } => {
+            start_wizard_from_callback(
+                bot,
+                q,
+                state,
+                CallbackAction::PromptEditTokenGroup { token_id, page },
+                "Жду ID группы",
+                "Введите ID группы для токена:\n\
+                 • ID группы (например, 1, 2, 3)\n\
+                 • 0 — убрать группу\n\n\
+                 Текущую группу токена можно посмотреть в его карточке.".to_string(),
+            )
+            .await?;
             Ok(true)
         }
         CallbackAction::SendTokenStartLink { token_id } => {

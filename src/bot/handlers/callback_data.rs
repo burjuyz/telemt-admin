@@ -123,6 +123,21 @@ pub enum CallbackAction {
     PromptTokenCreate {
         auto_approve: bool,
     },
+    SetTokenExpiration {
+        days: i32,
+        auto_approve: bool,
+    },
+    SetTokenMaxIps {
+        count: Option<i32>,
+        auto_approve: bool,
+        expiration_days: i32,
+    },
+    SetTokenDataQuota {
+        quota_gb: Option<i64>,
+        auto_approve: bool,
+        expiration_days: i32,
+        max_unique_ips: Option<i32>,
+    },
     ShowTokenList,
     ShowTokenListPage {
         page: i64,
@@ -131,6 +146,10 @@ pub enum CallbackAction {
         page: i64,
     },
     OpenTokenCard {
+        token_id: i64,
+        page: i64,
+    },
+    PromptEditTokenGroup {
         token_id: i64,
         page: i64,
     },
@@ -268,11 +287,29 @@ impl CallbackAction {
                 let auto_approve = if *auto_approve { 1 } else { 0 };
                 format!("v1|admin|token|create|{auto_approve}")
             }
+            Self::SetTokenExpiration { days, auto_approve } => {
+                let auto_approve = if *auto_approve { 1 } else { 0 };
+                format!("v1|admin|token|exp|{}|{}", days, auto_approve)
+            }
+            Self::SetTokenMaxIps { count, auto_approve, expiration_days } => {
+                let auto_approve = if *auto_approve { 1 } else { 0 };
+                let count_str = count.map(|c| c.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|token|ips|{}|{}|{}", expiration_days, auto_approve, count_str)
+            }
+            Self::SetTokenDataQuota { quota_gb, auto_approve, expiration_days, max_unique_ips } => {
+                let auto_approve = if *auto_approve { 1 } else { 0 };
+                let quota_str = quota_gb.map(|q| q.to_string()).unwrap_or_else(|| "none".to_string());
+                let ips_str = max_unique_ips.map(|i| i.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|token|quota|{}|{}|{}|{}", expiration_days, auto_approve, ips_str, quota_str)
+            }
             Self::ShowTokenList => "v1|admin|token|list".to_string(),
             Self::ShowTokenListPage { page } => format!("v1|admin|token|page|{page}"),
             Self::PromptTokenLookup { page } => format!("v1|admin|token|lookup|{page}"),
             Self::OpenTokenCard { token_id, page } => {
                 format!("v1|admin|token|open|{token_id}|{page}")
+            }
+            Self::PromptEditTokenGroup { token_id, page } => {
+                format!("v1|admin|token|edit|group|{token_id}|{page}")
             }
             Self::SendTokenStartLink { token_id } => {
                 format!("v1|admin|token|startlink|{token_id}")
@@ -432,6 +469,22 @@ impl CallbackAction {
             ["v1", "admin", "token", "create", auto_approve] => Some(Self::PromptTokenCreate {
                 auto_approve: *auto_approve == "1",
             }),
+            ["v1", "admin", "token", "exp", days, auto_approve] => Some(Self::SetTokenExpiration {
+                days: parse_i64(days)? as i32,
+                auto_approve: *auto_approve == "1",
+            }),
+            ["v1", "admin", "token", "ips", expiration_days, auto_approve, count] => {
+                let max_ips = if *count == "none" {
+                    None
+                } else {
+                    Some(parse_i64(count)? as i32)
+                };
+                Some(Self::SetTokenMaxIps {
+                    count: max_ips,
+                    auto_approve: *auto_approve == "1",
+                    expiration_days: parse_i64(expiration_days)? as i32,
+                })
+}
             ["v1", "admin", "token", "list"] => Some(Self::ShowTokenList),
             ["v1", "admin", "token", "page", page] => Some(Self::ShowTokenListPage {
                 page: parse_i64(page)?.max(1),
@@ -443,6 +496,12 @@ impl CallbackAction {
                 token_id: parse_i64(token_id)?,
                 page: parse_i64(page)?.max(1),
             }),
+            ["v1", "admin", "token", "edit", "group", token_id, page] => {
+                Some(Self::PromptEditTokenGroup {
+                    token_id: parse_i64(token_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "token", "startlink", token_id] => Some(Self::SendTokenStartLink {
                 token_id: parse_i64(token_id)?,
             }),

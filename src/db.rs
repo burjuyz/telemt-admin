@@ -85,6 +85,8 @@ pub struct InviteToken {
     pub default_max_unique_ips: Option<i32>,
     /// Default data quota in bytes for user (applied when user activates token).
     pub default_data_quota_bytes: Option<i64>,
+    /// Default group ID for user (applied when user activates token).
+    pub default_group_id: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,7 +128,7 @@ pub(crate) const STATUS_PENDING: &str = "pending";
 pub(crate) const STATUS_REJECTED: &str = "rejected";
 pub(crate) const STATUS_DELETED: &str = "deleted";
 pub(crate) const SELECT_REQUEST: &str = "SELECT id, tg_user_id, tg_username, tg_display_name, status, telemt_username, secret, created_at, backend_mode, last_sync_error, last_seen_revision, last_synced_at, invite_token_id FROM registration_requests";
-pub(crate) const SELECT_INVITE_TOKEN: &str = "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active, default_expiration_days, default_max_unique_ips, default_data_quota_bytes FROM invite_tokens";
+pub(crate) const SELECT_INVITE_TOKEN: &str = "SELECT id, token, created_at, expires_at, auto_approve, created_by, usage_count, max_usage, is_active, default_expiration_days, default_max_unique_ips, default_data_quota_bytes, default_group_id FROM invite_tokens";
 pub(crate) const ACTIVE_INVITE_TOKEN_PREDICATE: &str =
     "is_active = 1 AND expires_at > ? AND (max_usage IS NULL OR usage_count < max_usage)";
 

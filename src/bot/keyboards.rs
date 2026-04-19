@@ -723,6 +723,122 @@ pub fn token_menu_keyboard(auto_approve_enabled: bool) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
+pub fn token_expiration_keyboard(auto_approve: bool) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "30 дн",
+                CallbackAction::SetTokenExpiration { days: 30, auto_approve }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "60 дн",
+                CallbackAction::SetTokenExpiration { days: 60, auto_approve }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "180 дн",
+                CallbackAction::SetTokenExpiration { days: 180, auto_approve }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "📝 Другое...",
+            CallbackAction::PromptTokenCreate { auto_approve }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Отмена",
+            CallbackAction::ShowTokenMenu.encode(),
+        )],
+    ])
+}
+
+pub fn token_max_ips_keyboard(auto_approve: bool, expiration_days: i32) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "1",
+                CallbackAction::SetTokenMaxIps { count: Some(1), auto_approve, expiration_days }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "5",
+                CallbackAction::SetTokenMaxIps { count: Some(5), auto_approve, expiration_days }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "10",
+                CallbackAction::SetTokenMaxIps { count: Some(10), auto_approve, expiration_days }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "Без лимита",
+            CallbackAction::SetTokenMaxIps { count: None, auto_approve, expiration_days }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::SetTokenExpiration { days: expiration_days, auto_approve }.encode(),
+        )],
+    ])
+}
+
+pub fn token_data_quota_keyboard(
+    auto_approve: bool,
+    expiration_days: i32,
+    max_unique_ips: Option<i32>,
+) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "1 GB",
+                CallbackAction::SetTokenDataQuota { 
+                    quota_gb: Some(1 * 1024 * 1024 * 1024),
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "5 GB",
+                CallbackAction::SetTokenDataQuota { 
+                    quota_gb: Some(5 * 1024 * 1024 * 1024),
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "10 GB",
+                CallbackAction::SetTokenDataQuota { 
+                    quota_gb: Some(10 * 1024 * 1024 * 1024),
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "Безлимит",
+                CallbackAction::SetTokenDataQuota { 
+                    quota_gb: Some(0),
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "📝 Другое...",
+                CallbackAction::SetTokenDataQuota { 
+                    quota_gb: None,
+                    auto_approve,
+                    expiration_days,
+                    max_unique_ips,
+                }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::SetTokenMaxIps { count: max_unique_ips, auto_approve, expiration_days }.encode(),
+        )],
+    ])
+}
+
 pub fn token_list_keyboard(
     tokens: &[(i64, String)],
     page: i64,
@@ -787,6 +903,10 @@ pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
                 CallbackAction::SendTokenStartLink { token_id }.encode(),
             ),
         ],
+        vec![InlineKeyboardButton::callback(
+            "📁 Группа",
+            CallbackAction::PromptEditTokenGroup { token_id, page }.encode(),
+        )],
         vec![InlineKeyboardButton::callback(
             "🗑 Отозвать токен",
             CallbackAction::ConfirmTokenRevoke { token_id, page }.encode(),

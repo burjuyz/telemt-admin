@@ -31,6 +31,7 @@ impl Db {
         default_expiration_days: Option<i32>,
         default_max_unique_ips: Option<i32>,
         default_data_quota_bytes: Option<i64>,
+        default_group_id: Option<i64>,
     ) -> Result<InviteToken, anyhow::Error> {
         let now = current_unix_timestamp()?;
         let ttl_seconds = days
@@ -44,8 +45,8 @@ impl Db {
         for _ in 0..8 {
             let token = generate_invite_token();
             let result = sqlx::query(
-                "INSERT INTO invite_tokens (token, created_at, expires_at, auto_approve, created_by, max_usage, default_expiration_days, default_max_unique_ips, default_data_quota_bytes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO invite_tokens (token, created_at, expires_at, auto_approve, created_by, max_usage, default_expiration_days, default_max_unique_ips, default_data_quota_bytes, default_group_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&token)
             .bind(now)
@@ -56,6 +57,7 @@ impl Db {
             .bind(default_expiration_days)
             .bind(default_max_unique_ips)
             .bind(default_data_quota_bytes)
+            .bind(default_group_id)
             .execute(&self.pool)
             .await;
 
@@ -157,6 +159,24 @@ impl Db {
         .bind(now)
         .bind(token_id)
         .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn update_invite_token_group(
+        &self,
+        token_id: i64,
+        default_group_id: Option<i64>,
+    ) -> Result<bool, anyhow::Error> {
+        let result = sqlx::query(
+            "UPDATE invite_tokens
+             SET default_group_id = ?
+             WHERE id = ?
+               AND is_active = 1",
+        )
+        .bind(default_group_id)
+        .bind(token_id)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)
@@ -292,7 +312,7 @@ mod tests {
 
         let token = fixture
             .db
-            .create_invite_token(7, true, Some(3), Some(77), None, None, None)
+            .create_invite_token(7, true, Some(3), Some(77), None, None, None, None)
             .await?;
 
         assert_eq!(token.created_by, Some(77));
@@ -308,7 +328,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(2), Some(1), None, None, None)
+            .create_invite_token(7, false, Some(2), Some(1), None, None, None, None)
             .await?;
 
         let consumed = fixture.db.consume_invite_token(&token.token).await?;
@@ -331,7 +351,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(1), None, None, None, None)
+            .create_invite_token(7, false, Some(1), None, None, None, None, None)
             .await?;
         fixture.db.consume_invite_token(&token.token).await?;
 
@@ -346,7 +366,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, None, None, None, None, None)
+            .create_invite_token(7, false, None, None, None, None, None, None)
             .await?;
 
         assert!(fixture.db.revoke_invite_token_by_id(token.id).await?);
@@ -365,7 +385,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, true, Some(5), None, None, None, None)
+            .create_invite_token(7, true, Some(5), None, None, None, None, None)
             .await?;
 
         let peeked = fixture
@@ -389,7 +409,7 @@ mod tests {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db
-            .create_invite_token(7, false, Some(1), None, None, None, None)
+            .create_invite_token(7, false, Some(1), None, None, None, None, None)
             .await?;
         fixture.db.consume_invite_token(&token.token).await?;
 

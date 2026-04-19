@@ -39,6 +39,18 @@ pub enum WizardState {
         expiration_days: Option<i32>,
         max_unique_ips: Option<i32>,
     },
+    /// Waiting for group selection during token creation.
+    AdminTokenAwaitingGroup {
+        auto_approve: bool,
+        expiration_days: i32,
+        max_unique_ips: Option<i32>,
+        data_quota_bytes: Option<i64>,
+    },
+    /// Waiting for group ID to assign to an existing token.
+    AdminEditTokenGroup {
+        token_id: i64,
+        page: i64,
+    },
     /// Ожидание текста рассылки всем approved-пользователям.
     AdminBroadcastAwaitingMessage,
     /// Название новой группы пользователей.
@@ -106,6 +118,26 @@ impl WizardState {
                     max_unique_ips.unwrap_or(0)
                 )
             }
+            Self::AdminTokenAwaitingGroup {
+                auto_approve,
+                expiration_days,
+                max_unique_ips,
+                data_quota_bytes,
+            } => {
+                let auto_str = if *auto_approve { "auto" } else { "manual" };
+                let ips_str = max_unique_ips.unwrap_or(0).to_string();
+                let quota_str = data_quota_bytes.unwrap_or(0).to_string();
+                format!(
+                    "admin_token_group:{}:{}:{}:{}",
+                    expiration_days,
+                    auto_str,
+                    ips_str,
+                    quota_str
+                )
+            }
+            Self::AdminEditTokenGroup { token_id, page } => {
+                format!("admin_edit_token_group:{}:{}", token_id, page)
+            }
             Self::AdminBroadcastAwaitingMessage => "admin_broadcast_awaiting".to_string(),
             Self::AdminGroupAwaitingName => "admin_group_awaiting_name".to_string(),
             Self::AdminGroupExpiryAwaitingValue { group_id } => {
@@ -162,10 +194,31 @@ impl WizardState {
                         max_unique_ips,
                     });
                 }
+                if let Some(value) = value.strip_prefix("admin_token_group:") {
+                    let mut parts = value.split(':');
+                    let expiration_days = parts.next()?.parse::<i32>().ok()?;
+                    let auto_approve = parts.next() == Some("auto");
+                    let max_unique_ips = parts.next()?.parse::<i32>().ok()?;
+                    let max_unique_ips = if max_unique_ips == 0 { None } else { Some(max_unique_ips) };
+                    let data_quota_bytes = parts.next()?.parse::<i64>().ok()?;
+                    let data_quota_bytes = if data_quota_bytes == 0 { None } else { Some(data_quota_bytes) };
+                    return Some(Self::AdminTokenAwaitingGroup {
+                        auto_approve,
+                        expiration_days,
+                        max_unique_ips,
+                        data_quota_bytes,
+                    });
+                }
                 if let Some(value) = value.strip_prefix("admin_group_expiry:") {
                     return Some(Self::AdminGroupExpiryAwaitingValue {
                         group_id: value.parse::<i64>().ok()?,
                     });
+                }
+                if let Some(value) = value.strip_prefix("admin_edit_token_group:") {
+                    let mut parts = value.split(':');
+                    let token_id = parts.next()?.parse::<i64>().ok()?;
+                    let page = parts.next()?.parse::<i64>().ok()?.max(1);
+                    return Some(Self::AdminEditTokenGroup { token_id, page });
                 }
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {

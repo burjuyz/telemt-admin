@@ -86,6 +86,8 @@ impl Db {
             .await?;
         self.ensure_column_exists("invite_tokens", "default_data_quota_bytes", "INTEGER")
             .await?;
+        self.ensure_column_exists("invite_tokens", "default_group_id", "INTEGER")
+            .await?;
 
         sqlx::query(
             r#"
