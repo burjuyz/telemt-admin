@@ -25,8 +25,8 @@ use legacy::LegacyTelemtBackend;
 #[allow(unused_imports)]
 pub use types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionTopUser,
-    TelemtConnectionsSummary, TelemtMonitorSnapshot, TelemtRuntimeEvent,
-    TelemtRuntimeSnapshot, TelemtStatsSummary, TelemtUserInfo, TelemtUserPatch,
+    TelemtConnectionsSummary, TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot,
+    TelemtStatsSummary, TelemtUserInfo, TelemtUserPatch,
 };
 
 #[derive(Clone)]
@@ -46,11 +46,7 @@ impl TelemtBackend {
         telemt_runtime: TelemtRuntime,
     ) -> Result<Self, anyhow::Error> {
         let inner = if api_cfg.enabled {
-            TelemtBackendInner::Api(ApiTelemtBackend::new(
-                api_cfg,
-                telemt_cfg,
-                telemt_runtime,
-            )?)
+            TelemtBackendInner::Api(ApiTelemtBackend::new(api_cfg, telemt_cfg, telemt_runtime)?)
         } else {
             TelemtBackendInner::Legacy(LegacyTelemtBackend::new(telemt_cfg, telemt_runtime))
         };
@@ -80,7 +76,14 @@ impl TelemtBackend {
                 legacy.provision_user(username, desired_secret).await
             }
             TelemtBackendInner::Api(api) => {
-                api.provision_user(username, desired_secret, expiration_days, max_unique_ips, data_quota_bytes).await
+                api.provision_user(
+                    username,
+                    desired_secret,
+                    expiration_days,
+                    max_unique_ips,
+                    data_quota_bytes,
+                )
+                .await
             }
         }
     }

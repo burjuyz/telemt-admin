@@ -107,8 +107,7 @@ impl BotMessages {
     }
 
     pub fn invite_followup_prompt_or_default(&self) -> &str {
-        const DEFAULT: &str =
-            "Отправьте invite-токен следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.";
+        const DEFAULT: &str = "Отправьте invite-токен следующим сообщением.\n\nСообщение с кнопками можно оставить открытым.";
         Self::non_empty(self.invite_followup_prompt.as_deref()).unwrap_or(DEFAULT)
     }
 
@@ -161,8 +160,7 @@ impl BotMessages {
     }
 
     pub fn broadcast_summary_text(&self, ok: u64, failed: u64, total: u64) -> String {
-        const DEFAULT: &str =
-            "Рассылка завершена.\nУспешно: {ok}\nОшибок: {failed}\nВсего получателей в списке: {total}";
+        const DEFAULT: &str = "Рассылка завершена.\nУспешно: {ok}\nОшибок: {failed}\nВсего получателей в списке: {total}";
         Self::render_template(
             self.broadcast_summary_template.as_deref(),
             DEFAULT,
@@ -455,8 +453,8 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_runtime_mode, BotMessages, Config, NotificationsConfig, RuntimeSection,
-        SecurityConfig, TelemtApiConfig,
+        BotMessages, Config, NotificationsConfig, RuntimeSection, SecurityConfig, TelemtApiConfig,
+        default_runtime_mode,
     };
     use crate::runtime::RuntimeMode;
     use std::path::PathBuf;
@@ -487,15 +485,26 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(messages.invite_manual_prompt_or_default().contains("Введите"));
-        assert!(messages.invite_followup_prompt_or_default().contains("invite-токен"));
+        assert!(
+            messages
+                .invite_manual_prompt_or_default()
+                .contains("Введите")
+        );
+        assert!(
+            messages
+                .invite_followup_prompt_or_default()
+                .contains("invite-токен")
+        );
     }
 
     #[test]
     fn configured_bot_username_normalizes_input() {
         let config = sample_config();
 
-        assert_eq!(config.configured_bot_username().as_deref(), Some("TelemtAdmin"));
+        assert_eq!(
+            config.configured_bot_username().as_deref(),
+            Some("TelemtAdmin")
+        );
     }
 
     #[test]
@@ -503,7 +512,9 @@ mod tests {
         let config = sample_config();
 
         assert_eq!(
-            config.resolved_bot_username(Some("@AnotherBot".to_string())).as_deref(),
+            config
+                .resolved_bot_username(Some("@AnotherBot".to_string()))
+                .as_deref(),
             Some("TelemtAdmin")
         );
     }

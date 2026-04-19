@@ -10,18 +10,29 @@ use teloxide::types::Message;
 pub enum WizardState {
     AwaitingInviteToken,
     AdminDeleteAwaitingTarget,
-    AdminFindUserAwaitingTarget { page: i64 },
+    AdminFindUserAwaitingTarget {
+        page: i64,
+    },
     AdminSetUserLimitAwaitingValue {
         tg_user_id: i64,
         page: i64,
         field: UserLimitField,
     },
-    AdminFindTokenAwaitingCode { page: i64 },
-    AdminTokenCreateAwaitingParams { auto_approve: bool },
+    AdminFindTokenAwaitingCode {
+        page: i64,
+    },
+    AdminTokenCreateAwaitingParams {
+        auto_approve: bool,
+    },
     /// Waiting for expiration days (30/60/180 or custom input).
-    AdminTokenAwaitingExpiration { auto_approve: bool },
+    AdminTokenAwaitingExpiration {
+        auto_approve: bool,
+    },
     /// Waiting for max unique IPs (optional input).
-    AdminTokenAwaitingMaxIps { auto_approve: bool, expiration_days: Option<i32> },
+    AdminTokenAwaitingMaxIps {
+        auto_approve: bool,
+        expiration_days: Option<i32>,
+    },
     /// Waiting for data quota bytes (optional input).
     AdminTokenAwaitingDataQuota {
         auto_approve: bool,
@@ -33,7 +44,9 @@ pub enum WizardState {
     /// Название новой группы пользователей.
     AdminGroupAwaitingName,
     /// Новое значение общего срока действия группы.
-    AdminGroupExpiryAwaitingValue { group_id: i64 },
+    AdminGroupExpiryAwaitingValue {
+        group_id: i64,
+    },
     /// Telegram user id для импорта из telemt API.
     AdminImportAwaitingTgId,
 }

@@ -213,12 +213,7 @@ pub async fn run_self_update() -> Result<()> {
         archive_bytes
     };
 
-    install_downloaded_release(
-        exe_dir.to_path_buf(),
-        current_exe.clone(),
-        archive_bytes,
-    )
-    .await?;
+    install_downloaded_release(exe_dir.to_path_buf(), current_exe.clone(), archive_bytes).await?;
 
     println!(
         "Обновление до версии {} завершено. Перезапустите сервис: systemctl restart telemt-admin.service",

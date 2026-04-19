@@ -48,14 +48,13 @@ fn sync_state_for_provision(
     configured_mode: TelemtBackendMode,
     provisioned: &ProvisionedUser,
 ) -> SyncStateUpdate {
-    let last_sync_error =
-        if configured_mode == TelemtBackendMode::ControlApi
-            && provisioned.mode == TelemtBackendMode::LegacyFile
-        {
-            Some(SYNC_ERROR_DEGRADED_LEGACY_FALLBACK)
-        } else {
-            None
-        };
+    let last_sync_error = if configured_mode == TelemtBackendMode::ControlApi
+        && provisioned.mode == TelemtBackendMode::LegacyFile
+    {
+        Some(SYNC_ERROR_DEGRADED_LEGACY_FALLBACK)
+    } else {
+        None
+    };
 
     SyncStateUpdate::new(
         provisioned.mode,
@@ -187,8 +186,11 @@ async fn send_invite_token_error_message(
 ) -> HandlerResult {
     match error {
         TokenConsumeError::NotFound => {
-            bot.send_message(chat_id, "Токен не найден. Проверьте код и попробуйте снова.")
-                .await?;
+            bot.send_message(
+                chat_id,
+                "Токен не найден. Проверьте код и попробуйте снова.",
+            )
+            .await?;
         }
         TokenConsumeError::Revoked => {
             bot.send_message(chat_id, "Этот токен отозван администратором.")
@@ -259,21 +261,32 @@ pub async fn approve_request_and_build_link(
         None => return Ok(None),
     };
 
-    let (expiration_days, max_unique_ips, data_quota_bytes) = if let Some(token_id) = request.invite_token_id {
-        if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
-            (token.default_expiration_days, token.default_max_unique_ips, token.default_data_quota_bytes)
+    let (expiration_days, max_unique_ips, data_quota_bytes) =
+        if let Some(token_id) = request.invite_token_id {
+            if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+                (
+                    token.default_expiration_days,
+                    token.default_max_unique_ips,
+                    token.default_data_quota_bytes,
+                )
+            } else {
+                (None, None, None)
+            }
         } else {
             (None, None, None)
-        }
-    } else {
-        (None, None, None)
-    };
+        };
 
     let telemt_user = telemt_username(request.tg_user_id);
     let user_secret = generate_user_secret();
     let provisioned = state
         .telemt_backend
-        .provision_user(&telemt_user, &user_secret, expiration_days, max_unique_ips, data_quota_bytes)
+        .provision_user(
+            &telemt_user,
+            &user_secret,
+            expiration_days,
+            max_unique_ips,
+            data_quota_bytes,
+        )
         .await?;
     if state
         .db
@@ -312,7 +325,13 @@ pub async fn approve_user_direct_and_build_link(
     let secret = generate_user_secret();
     let provisioned = state
         .telemt_backend
-        .provision_user(&telemt_user, &secret, expiration_days, max_unique_ips, data_quota_bytes)
+        .provision_user(
+            &telemt_user,
+            &secret,
+            expiration_days,
+            max_unique_ips,
+            data_quota_bytes,
+        )
         .await?;
     state
         .db
@@ -361,7 +380,8 @@ pub async fn process_invite_token(
                 return Ok(());
             }
         }
-        send_existing_user_link_message(bot, msg.chat.id, state, tg_user_id, &telemt_user, &secret).await?;
+        send_existing_user_link_message(bot, msg.chat.id, state, tg_user_id, &telemt_user, &secret)
+            .await?;
         clear_wizard_state(state, tg_user_id).await?;
         tracing::info!(
             tg_user_id = tg_user_id,
@@ -383,13 +403,21 @@ pub async fn process_invite_token(
                 )
                 .await?
                 {
-                    let (telemt_user, secret) = state
-                        .db
-                        .get_approved(tg_user_id)
-                        .await?
-                        .ok_or_else(|| anyhow::anyhow!("Пользователь импортирован, но запись approved не найдена"))?;
-                    send_existing_user_link_message(bot, msg.chat.id, state, tg_user_id, &telemt_user, &secret)
-                        .await?;
+                    let (telemt_user, secret) =
+                        state.db.get_approved(tg_user_id).await?.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Пользователь импортирован, но запись approved не найдена"
+                            )
+                        })?;
+                    send_existing_user_link_message(
+                        bot,
+                        msg.chat.id,
+                        state,
+                        tg_user_id,
+                        &telemt_user,
+                        &secret,
+                    )
+                    .await?;
                     clear_wizard_state(state, tg_user_id).await?;
                     tracing::info!(
                         tg_user_id = tg_user_id,
@@ -431,12 +459,7 @@ pub async fn process_invite_token(
         TokenMode::Manual => {
             let result = state
                 .db
-                .register_or_get(
-                    tg_user_id,
-                    tg_username,
-                    tg_display_name,
-                    Some(consumed.id),
-                )
+                .register_or_get(tg_user_id, tg_username, tg_display_name, Some(consumed.id))
                 .await?;
             match result {
                 RegisterResult::Approved(secret) => {
@@ -470,7 +493,7 @@ pub async fn process_invite_token(
                         msg.chat.id,
                         state.config.bot_messages.request_submitted_or_default(),
                     )
-                        .await?;
+                    .await?;
                     notify_admins(bot, state, req).await?;
                     clear_wizard_state(state, tg_user_id).await?;
                 }

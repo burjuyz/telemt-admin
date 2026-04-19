@@ -1,12 +1,12 @@
 use super::common::{ack_callback, replace_wizard_state};
 use crate::bot::handlers::actions::try_auto_import_remote_user_by_tg_id;
-use crate::bot::keyboards;
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    show_admin_home, show_user_home, show_user_link_screen, show_usage_guide,
+    show_admin_home, show_usage_guide, show_user_home, show_user_link_screen,
 };
 use crate::bot::handlers::shared::callback_message_target;
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
+use crate::bot::keyboards;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
 
@@ -74,7 +74,10 @@ pub async fn handle_user_action(
             if let Some((chat_id, _)) = callback_message_target(q) {
                 bot.send_message(
                     chat_id,
-                    state.config.bot_messages.invite_followup_prompt_or_default(),
+                    state
+                        .config
+                        .bot_messages
+                        .invite_followup_prompt_or_default(),
                 )
                 .await?;
             }
@@ -108,12 +111,21 @@ pub async fn handle_user_action(
             let state_key = state.db.get_wizard_state(user_id).await?;
             let current_state = WizardState::decode(state_key.as_deref().unwrap_or(""));
             let (_prev_auto_approve, new_state) = match current_state {
-                Some(WizardState::AdminTokenAwaitingMaxIps { auto_approve, .. }) => {
-                    (auto_approve, WizardState::AdminTokenAwaitingExpiration { auto_approve })
-                }
-                Some(WizardState::AdminTokenAwaitingDataQuota { auto_approve, expiration_days, .. }) => {
-                    (auto_approve, WizardState::AdminTokenAwaitingMaxIps { auto_approve, expiration_days })
-                }
+                Some(WizardState::AdminTokenAwaitingMaxIps { auto_approve, .. }) => (
+                    auto_approve,
+                    WizardState::AdminTokenAwaitingExpiration { auto_approve },
+                ),
+                Some(WizardState::AdminTokenAwaitingDataQuota {
+                    auto_approve,
+                    expiration_days,
+                    ..
+                }) => (
+                    auto_approve,
+                    WizardState::AdminTokenAwaitingMaxIps {
+                        auto_approve,
+                        expiration_days,
+                    },
+                ),
                 _ => {
                     clear_wizard_state(state, user_id).await?;
                     ack_callback(bot, q.id.clone(), Some("Нет предыдущего шага"), false).await?;
@@ -128,7 +140,7 @@ pub async fn handle_user_action(
                 Some(WizardState::AdminTokenAwaitingDataQuota { .. }) => {
                     "Введите лимит IP (количество устройств, с которых можно подключаться).\nНапример: 3 или пропустите отправив /skip"
                 }
-                _ => "Назад"
+                _ => "Назад",
             };
             ack_callback(bot, q.id.clone(), Some("Шаг назад"), false).await?;
             if let Some((chat_id, _)) = callback_message_target(q) {

@@ -70,65 +70,147 @@ pub enum CallbackAction {
     CancelWizard,
     BackTokenWizard,
     ShowPendingRequests,
-    ShowPendingRequestsPage { page: i64 },
-    OpenPendingRequest { request_id: i64, page: i64 },
-    ShowUsersPage { page: i64 },
-    ShowUsersPageByGroup { page: i64, group_id: i64 },
-    PromptUserLookup { page: i64 },
-    OpenUserCard { tg_user_id: i64, page: i64 },
+    ShowPendingRequestsPage {
+        page: i64,
+    },
+    OpenPendingRequest {
+        request_id: i64,
+        page: i64,
+    },
+    ShowUsersPage {
+        page: i64,
+    },
+    ShowUsersPageByGroup {
+        page: i64,
+        group_id: i64,
+    },
+    PromptUserLookup {
+        page: i64,
+    },
+    OpenUserCard {
+        tg_user_id: i64,
+        page: i64,
+    },
     PromptUserLimit {
         tg_user_id: i64,
         page: i64,
         field: UserLimitField,
     },
-    ViewUserQr { tg_user_id: i64 },
-    SendUserStartLink { tg_user_id: i64 },
-    ConfirmUserBan { tg_user_id: i64, page: i64 },
-    ExecuteUserBan { tg_user_id: i64, page: i64 },
+    ViewUserQr {
+        tg_user_id: i64,
+    },
+    SendUserStartLink {
+        tg_user_id: i64,
+    },
+    ConfirmUserBan {
+        tg_user_id: i64,
+        page: i64,
+    },
+    ExecuteUserBan {
+        tg_user_id: i64,
+        page: i64,
+    },
     ShowStats,
     ShowServicePanel,
     ShowConnectionsSummary,
-    ConfirmServiceAction { action: ServiceAction },
-    ExecuteServiceAction { action: ServiceAction },
+    ConfirmServiceAction {
+        action: ServiceAction,
+    },
+    ExecuteServiceAction {
+        action: ServiceAction,
+    },
     ShowTokenMenu,
-    PromptTokenCreate { auto_approve: bool },
+    PromptTokenCreate {
+        auto_approve: bool,
+    },
     ShowTokenList,
-    ShowTokenListPage { page: i64 },
-    PromptTokenLookup { page: i64 },
-    OpenTokenCard { token_id: i64, page: i64 },
-    SendTokenStartLink { token_id: i64 },
-    ConfirmTokenRevoke { token_id: i64, page: i64 },
-    ExecuteTokenRevoke { token_id: i64, page: i64 },
+    ShowTokenListPage {
+        page: i64,
+    },
+    PromptTokenLookup {
+        page: i64,
+    },
+    OpenTokenCard {
+        token_id: i64,
+        page: i64,
+    },
+    SendTokenStartLink {
+        token_id: i64,
+    },
+    ConfirmTokenRevoke {
+        token_id: i64,
+        page: i64,
+    },
+    ExecuteTokenRevoke {
+        token_id: i64,
+        page: i64,
+    },
     PromptDeleteUser,
-    ExecuteDeleteUser { tg_user_id: i64 },
-    ApproveRequest { request_id: i64, page: i64 },
-    RejectRequest { request_id: i64, page: i64 },
+    ExecuteDeleteUser {
+        tg_user_id: i64,
+    },
+    ApproveRequest {
+        request_id: i64,
+        page: i64,
+    },
+    RejectRequest {
+        request_id: i64,
+        page: i64,
+    },
     /// Рассылка сообщения всем пользователям со статусом approved.
     PromptBroadcastApproved,
     ShowGroupsMenu,
-    OpenGroupCard { group_id: i64 },
+    OpenGroupCard {
+        group_id: i64,
+    },
     PromptCreateGroup,
-    PromptGroupExpiry { group_id: i64 },
-    ClearGroupExpiry { group_id: i64 },
-    GroupDeactivateAll { group_id: i64 },
-    GroupApplyExpiry { group_id: i64 },
-    UserGroupPicker { tg_user_id: i64, page: i64 },
+    PromptGroupExpiry {
+        group_id: i64,
+    },
+    ClearGroupExpiry {
+        group_id: i64,
+    },
+    GroupDeactivateAll {
+        group_id: i64,
+    },
+    GroupApplyExpiry {
+        group_id: i64,
+    },
+    UserGroupPicker {
+        tg_user_id: i64,
+        page: i64,
+    },
     AssignUserToGroup {
         tg_user_id: i64,
         group_id: i64,
         page: i64,
     },
     PromptImportUser,
-    ShowGroupMembers { group_id: i64 },
-    ToggleUserSelection { tg_user_id: i64, page: i64 },
-    ToggleUserSelectionByGroup { tg_user_id: i64, page: i64, group_id: i64 },
+    ShowGroupMembers {
+        group_id: i64,
+    },
+    ToggleUserSelection {
+        tg_user_id: i64,
+        page: i64,
+    },
+    ToggleUserSelectionByGroup {
+        tg_user_id: i64,
+        page: i64,
+        group_id: i64,
+    },
     ClearUserSelection,
     ClearUserSelectionAndReturn,
     ShowUserSelectionActions,
-    BulkAssignGroup { group_id: i64 },
+    BulkAssignGroup {
+        group_id: i64,
+    },
     BulkAssignGroupPrompt,
-    SelectGroupForBulkAssign { group_id: i64 },
-    BulkSetUserLimit { field: UserLimitField },
+    SelectGroupForBulkAssign {
+        group_id: i64,
+    },
+    BulkSetUserLimit {
+        field: UserLimitField,
+    },
     BulkBanUsers,
     ExportUsersCsv,
 }
@@ -150,7 +232,9 @@ impl CallbackAction {
                 format!("v1|admin|pending|open|{request_id}|{page}")
             }
             Self::ShowUsersPage { page } => format!("v1|admin|users|page|{page}"),
-            Self::ShowUsersPageByGroup { page, group_id } => format!("v1|admin|users|page|{page}|group|{group_id}"),
+            Self::ShowUsersPageByGroup { page, group_id } => {
+                format!("v1|admin|users|page|{page}|group|{group_id}")
+            }
             Self::PromptUserLookup { page } => format!("v1|admin|users|lookup|{page}"),
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
@@ -221,25 +305,35 @@ impl CallbackAction {
             }
             Self::GroupDeactivateAll { group_id } => {
                 format!("v1|admin|groups|deactivate|{group_id}")
-            },
+            }
             Self::GroupApplyExpiry { group_id } => {
                 format!("v1|admin|groups|apply_expiry|{group_id}")
-            },
+            }
             Self::UserGroupPicker { tg_user_id, page } => {
                 format!("v1|admin|user|group|pick|{tg_user_id}|{page}")
             }
-Self::AssignUserToGroup {
+            Self::AssignUserToGroup {
                 tg_user_id,
                 group_id,
                 page,
-            } => format!("v1|admin|user|group|set|{}|{}|{}", tg_user_id, group_id, page),
-Self::PromptImportUser => "v1|admin|import".to_string(),
+            } => format!(
+                "v1|admin|user|group|set|{}|{}|{}",
+                tg_user_id, group_id, page
+            ),
+            Self::PromptImportUser => "v1|admin|import".to_string(),
             Self::ShowGroupMembers { group_id } => format!("v1|admin|groups|members|{}", group_id),
             Self::ToggleUserSelection { tg_user_id, page } => {
                 format!("v1|admin|users|select|{}|{}", tg_user_id, page)
             }
-            Self::ToggleUserSelectionByGroup { tg_user_id, page, group_id } => {
-                format!("v1|admin|users|select|{}|{}|g|{}", tg_user_id, page, group_id)
+            Self::ToggleUserSelectionByGroup {
+                tg_user_id,
+                page,
+                group_id,
+            } => {
+                format!(
+                    "v1|admin|users|select|{}|{}|g|{}",
+                    tg_user_id, page, group_id
+                )
             }
             Self::ClearUserSelection => "v1|admin|users|select|clear".to_string(),
             Self::ClearUserSelectionAndReturn => "v1|admin|users|select|clear|return".to_string(),
@@ -248,7 +342,9 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
                 format!("v1|admin|users|bulk|group|{}", group_id)
             }
             Self::BulkAssignGroupPrompt => "v1|admin|users|bulk|group|prompt".to_string(),
-            Self::SelectGroupForBulkAssign { group_id } => format!("v1|admin|users|bulk|group|select|{}", group_id),
+            Self::SelectGroupForBulkAssign { group_id } => {
+                format!("v1|admin|users|bulk|group|select|{}", group_id)
+            }
             Self::BulkSetUserLimit { field } => {
                 format!("v1|admin|users|bulk|limit|{}", field.as_str())
             }
@@ -285,10 +381,12 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
             ["v1", "admin", "users", "page", page] => Some(Self::ShowUsersPage {
                 page: parse_i64(page)?.max(1),
             }),
-            ["v1", "admin", "users", "page", page, "group", group_id] => Some(Self::ShowUsersPageByGroup {
-                page: parse_i64(page)?.max(1),
-                group_id: parse_i64(group_id)?,
-            }),
+            ["v1", "admin", "users", "page", page, "group", group_id] => {
+                Some(Self::ShowUsersPageByGroup {
+                    page: parse_i64(page)?.max(1),
+                    group_id: parse_i64(group_id)?,
+                })
+            }
             ["v1", "admin", "users", "lookup", page] => Some(Self::PromptUserLookup {
                 page: parse_i64(page)?.max(1),
             }),
@@ -399,34 +497,58 @@ Self::PromptImportUser => "v1|admin|import".to_string(),
                     tg_user_id: parse_i64(tg_user_id)?,
                     page: parse_i64(page)?.max(1),
                 })
-            },
-            ["v1", "admin", "user", "group", "set", tg_user_id, group_id, page] => {
-                Some(Self::AssignUserToGroup {
-                    tg_user_id: parse_i64(tg_user_id)?,
-                    group_id: parse_i64(group_id)?,
-                    page: parse_i64(page)?.max(1),
-                })
-            },
+            }
+            [
+                "v1",
+                "admin",
+                "user",
+                "group",
+                "set",
+                tg_user_id,
+                group_id,
+                page,
+            ] => Some(Self::AssignUserToGroup {
+                tg_user_id: parse_i64(tg_user_id)?,
+                group_id: parse_i64(group_id)?,
+                page: parse_i64(page)?.max(1),
+            }),
             ["v1", "admin", "import"] => Some(Self::PromptImportUser),
             ["v1", "admin", "groups", "members", group_id] => Some(Self::ShowGroupMembers {
                 group_id: parse_i64(group_id)?,
             }),
             ["v1", "admin", "users", "select", "clear"] => Some(Self::ClearUserSelection),
-            ["v1", "admin", "users", "select", "clear", "return"] => Some(Self::ClearUserSelectionAndReturn),
+            ["v1", "admin", "users", "select", "clear", "return"] => {
+                Some(Self::ClearUserSelectionAndReturn)
+            }
             ["v1", "admin", "users", "select", "actions"] => Some(Self::ShowUserSelectionActions),
-            ["v1", "admin", "users", "select", tg_user_id, page] => Some(Self::ToggleUserSelection {
-                tg_user_id: parse_i64(tg_user_id)?,
-                page: parse_i64(page)?.max(1),
-            }),
-            ["v1", "admin", "users", "select", tg_user_id, page, "g", group_id] => Some(Self::ToggleUserSelectionByGroup {
+            ["v1", "admin", "users", "select", tg_user_id, page] => {
+                Some(Self::ToggleUserSelection {
+                    tg_user_id: parse_i64(tg_user_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            [
+                "v1",
+                "admin",
+                "users",
+                "select",
+                tg_user_id,
+                page,
+                "g",
+                group_id,
+            ] => Some(Self::ToggleUserSelectionByGroup {
                 tg_user_id: parse_i64(tg_user_id)?,
                 page: parse_i64(page)?.max(1),
                 group_id: parse_i64(group_id)?,
             }),
-            ["v1", "admin", "users", "bulk", "group", "select", group_id] => Some(Self::SelectGroupForBulkAssign {
-                group_id: parse_i64(group_id)?,
-            }),
-            ["v1", "admin", "users", "bulk", "group", "prompt"] => Some(Self::BulkAssignGroupPrompt),
+            ["v1", "admin", "users", "bulk", "group", "select", group_id] => {
+                Some(Self::SelectGroupForBulkAssign {
+                    group_id: parse_i64(group_id)?,
+                })
+            }
+            ["v1", "admin", "users", "bulk", "group", "prompt"] => {
+                Some(Self::BulkAssignGroupPrompt)
+            }
             ["v1", "admin", "users", "bulk", "group", group_id] => Some(Self::BulkAssignGroup {
                 group_id: parse_i64(group_id)?,
             }),
@@ -452,7 +574,10 @@ mod tests {
     fn service_action_parse_accepts_known_values() {
         assert_eq!(ServiceAction::parse("start"), Some(ServiceAction::Start));
         assert_eq!(ServiceAction::parse("stop"), Some(ServiceAction::Stop));
-        assert_eq!(ServiceAction::parse("restart"), Some(ServiceAction::Restart));
+        assert_eq!(
+            ServiceAction::parse("restart"),
+            Some(ServiceAction::Restart)
+        );
         assert_eq!(ServiceAction::parse("reload"), Some(ServiceAction::Reload));
         assert_eq!(ServiceAction::parse("status"), Some(ServiceAction::Status));
         assert_eq!(ServiceAction::parse("unknown"), None);

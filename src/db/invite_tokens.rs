@@ -266,9 +266,7 @@ impl Db {
         .bind(token)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|err| {
-            map_internal_token_error("Не удалось загрузить invite-токен (peek)", err)
-        })?;
+        .map_err(|err| map_internal_token_error("Не удалось загрузить invite-токен (peek)", err))?;
 
         let Some(row) = row else {
             return Err(TokenConsumeError::NotFound);
@@ -292,7 +290,7 @@ mod tests {
     async fn create_invite_token_persists_active_token() -> Result<(), anyhow::Error> {
         let fixture = TestDb::new().await?;
 
-let token = fixture
+        let token = fixture
             .db
             .create_invite_token(7, true, Some(3), Some(77), None, None, None)
             .await?;
@@ -352,7 +350,13 @@ let token = fixture
             .await?;
 
         assert!(fixture.db.revoke_invite_token_by_id(token.id).await?);
-        assert!(fixture.db.get_active_invite_token_by_id(token.id).await?.is_none());
+        assert!(
+            fixture
+                .db
+                .get_active_invite_token_by_id(token.id)
+                .await?
+                .is_none()
+        );
         Ok(())
     }
 
@@ -380,7 +384,8 @@ let token = fixture
     }
 
     #[tokio::test]
-    async fn peek_invite_token_succeeds_when_usage_exhausted_for_consume() -> Result<(), anyhow::Error> {
+    async fn peek_invite_token_succeeds_when_usage_exhausted_for_consume()
+    -> Result<(), anyhow::Error> {
         let fixture = TestDb::new().await?;
         let token = fixture
             .db

@@ -354,20 +354,16 @@ impl ApiTelemtBackend {
             .ok();
         let (gates, me_selftest, upstream) = self.fetch_runtime_aux().await;
 
-        let (
-            accepting_new_connections,
-            me_runtime_ready,
-            use_middle_proxy,
-            route_mode,
-        ) = match &gates {
-            Some(g) => (
-                Some(g.accepting_new_connections),
-                Some(g.me_runtime_ready),
-                Some(g.use_middle_proxy),
-                Some(g.route_mode.clone()),
-            ),
-            None => (None, None, None, None),
-        };
+        let (accepting_new_connections, me_runtime_ready, use_middle_proxy, route_mode) =
+            match &gates {
+                Some(g) => (
+                    Some(g.accepting_new_connections),
+                    Some(g.me_runtime_ready),
+                    Some(g.use_middle_proxy),
+                    Some(g.route_mode.clone()),
+                ),
+                None => (None, None, None, None),
+            };
 
         let (me_selftest_enabled, me_selftest_kdf_state, me_selftest_timeskew_state) =
             match &me_selftest {

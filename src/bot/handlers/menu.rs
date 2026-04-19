@@ -4,12 +4,12 @@ use super::actions::{
     process_invite_token, prompt_delete_confirmation,
 };
 use super::callback_data::CallbackAction;
-use crate::bot::keyboards;
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,
     sender_user_id, set_wizard_state, wizard_state,
 };
+use crate::bot::keyboards;
 use chrono::{NaiveDate, Utc};
 use teloxide::prelude::*;
 
@@ -31,13 +31,15 @@ fn parse_group_expiration_input(value: &str) -> Result<Option<i64>, anyhow::Erro
 
     if let Some(days) = trimmed.strip_prefix('+') {
         let days = days.trim_end_matches('d').trim();
-        let days = days
-            .parse::<i64>()
-            .map_err(|_| anyhow::anyhow!("Количество дней должно быть положительным целым числом"))?;
+        let days = days.parse::<i64>().map_err(|_| {
+            anyhow::anyhow!("Количество дней должно быть положительным целым числом")
+        })?;
         if days <= 0 {
             return Err(anyhow::anyhow!("Количество дней должно быть больше нуля"));
         }
-        return Ok(Some((Utc::now() + chrono::Duration::days(days)).timestamp()));
+        return Ok(Some(
+            (Utc::now() + chrono::Duration::days(days)).timestamp(),
+        ));
     }
 
     let date = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
@@ -101,11 +103,8 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                     .await?;
                 }
                 Err(error) => {
-                    bot.send_message(
-                        msg.chat.id,
-                        format!("Не удалось создать группу: {}", error),
-                    )
-                    .await?;
+                    bot.send_message(msg.chat.id, format!("Не удалось создать группу: {}", error))
+                        .await?;
                 }
             }
         }
@@ -139,8 +138,7 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                 }
                 Ok(false) => {
                     clear_wizard_state(&state, user_id).await?;
-                    bot.send_message(msg.chat.id, "Группа не найдена.")
-                        .await?;
+                    bot.send_message(msg.chat.id, "Группа не найдена.").await?;
                 }
                 Err(error) => {
                     bot.send_message(
@@ -212,9 +210,15 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
             page: _,
             field,
         }) => {
-            let updated =
-                apply_user_limit_from_input(&bot, msg.chat.id, &state, tg_user_id, field, text.trim())
-                    .await?;
+            let updated = apply_user_limit_from_input(
+                &bot,
+                msg.chat.id,
+                &state,
+                tg_user_id,
+                field,
+                text.trim(),
+            )
+            .await?;
             if updated {
                 clear_wizard_state(&state, user_id).await?;
             }
@@ -295,7 +299,9 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                 },
             )
             .await?;
-            let ips_text = max_unique_ips.map(|v| v.to_string()).unwrap_or_else(|| "не ограничен".to_string());
+            let ips_text = max_unique_ips
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "не ограничен".to_string());
             bot.send_message(
                 msg.chat.id,
                 format!(
@@ -344,9 +350,7 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
                     );
                     format!("Ссылка: {}\n", invite_link)
                 })
-                .unwrap_or_else(|| {
-                    "Ссылка: недоступна (username бота неизвестен).\n".to_string()
-                });
+                .unwrap_or_else(|| "Ссылка: недоступна (username бота неизвестен).\n".to_string());
 
             let limits_text = {
                 let mut parts = Vec::new();

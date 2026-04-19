@@ -21,19 +21,19 @@ pub async fn broadcast_to_approved_users(
     text: &str,
 ) -> HandlerResult {
     let trimmed = text.trim();
-    
+
     // Отмена рассылки по команде или пустому тексту
     if trimmed.is_empty() || is_cancel_command(trimmed) {
         clear_wizard_state(state, admin_tg_user_id).await?;
         let cancel_message = state.config.bot_messages.broadcast_cancelled_or_default();
-        
+
         // Гарантируем, что сообщение не пустое
         let message = if cancel_message.trim().is_empty() {
             "Рассылка отменена."
         } else {
             cancel_message
         };
-        
+
         bot.send_message(msg.chat.id, message).await?;
         return Ok(());
     }

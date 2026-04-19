@@ -166,11 +166,7 @@ fn render_service_panel_text(data: &ServicePanelData) -> String {
 
     lines.push(String::new());
     if data.caps.shows_systemd_unit {
-        lines.push(format!(
-            "Юнит {}: {}",
-            data.runtime_label,
-            status_label
-        ));
+        lines.push(format!("Юнит {}: {}", data.runtime_label, status_label));
         lines.push(format!(
             "Проверка systemd: {}",
             if data.summary.success {
@@ -180,11 +176,7 @@ fn render_service_panel_text(data: &ServicePanelData) -> String {
             }
         ));
     } else {
-        lines.push(format!(
-            "Telemt ({}): {}",
-            data.runtime_label,
-            status_label
-        ));
+        lines.push(format!("Telemt ({}): {}", data.runtime_label, status_label));
         lines.push(format!(
             "Статус host-runtime: {}",
             if data.summary.success {
@@ -242,12 +234,13 @@ fn render_service_panel_text(data: &ServicePanelData) -> String {
         lines.push(format!("Профиль: {}", snapshot.source.as_str()));
         lines.push(format!(
             "Версия: {} | Health: {} | read-only: {}",
-            snapshot
-                .build_version
-                .as_deref()
-                .unwrap_or("—"),
+            snapshot.build_version.as_deref().unwrap_or("—"),
             snapshot.health_status,
-            if snapshot.api_read_only { "да" } else { "нет" }
+            if snapshot.api_read_only {
+                "да"
+            } else {
+                "нет"
+            }
         ));
         if let Some(mode) = &snapshot.transport_mode {
             lines.push(format!("Транспорт: {}", mode));
@@ -278,10 +271,7 @@ fn render_service_panel_text(data: &ServicePanelData) -> String {
         }
         match snapshot.me_selftest_enabled {
             Some(true) => {
-                let kdf = snapshot
-                    .me_selftest_kdf_state
-                    .as_deref()
-                    .unwrap_or("—");
+                let kdf = snapshot.me_selftest_kdf_state.as_deref().unwrap_or("—");
                 let skew = snapshot
                     .me_selftest_timeskew_state
                     .as_deref()
@@ -310,11 +300,7 @@ fn render_service_panel_text(data: &ServicePanelData) -> String {
                 .unwrap_or_else(|| "—".to_string());
             lines.push(format!(
                 "API whitelist: {} ({})",
-                if enabled {
-                    "вкл"
-                } else {
-                    "выкл"
-                },
+                if enabled { "вкл" } else { "выкл" },
                 entries
             ));
         }
@@ -539,10 +525,17 @@ pub async fn show_user_link_screen(
             .build_user_link(telemt_user.as_str(), secret_opt)
             .await?;
         let text = state.config.bot_messages.user_link_text(&link);
-        upsert_screen(bot, chat_id, message_id, text, crate::bot::keyboards::user_home_keyboard())
-            .await
+        upsert_screen(
+            bot,
+            chat_id,
+            message_id,
+            text,
+            crate::bot::keyboards::user_home_keyboard(),
+        )
+        .await
     } else {
-        let text = "🔒 У вас нет доступа к прокси.\n\nВведите invite-токен, чтобы получить доступ.".to_string();
+        let text = "🔒 У вас нет доступа к прокси.\n\nВведите invite-токен, чтобы получить доступ."
+            .to_string();
         upsert_screen(
             bot,
             chat_id,
@@ -822,12 +815,14 @@ pub async fn admin_show_users_page_by_group(
     message_id: Option<MessageId>,
 ) -> HandlerResult {
     let group = state.db.get_user_group_by_id(group_id).await?;
-    let group_name = group.map(|g| g.name).unwrap_or_else(|| "Группа".to_string());
-    
+    let group_name = group
+        .map(|g| g.name)
+        .unwrap_or_else(|| "Группа".to_string());
+
     let total_users = state.db.count_users_in_group(group_id).await?;
     let users_page_size = state.config.users_page_size.max(1);
     let selected_users = state.selected_users.lock().unwrap().clone();
-    
+
     render_paged_selector_screen(
         bot,
         PagedSelectorConfig {
@@ -843,20 +838,30 @@ pub async fn admin_show_users_page_by_group(
             empty_keyboard: crate::bot::keyboards::users_page_keyboard_empty(1, Some(group_id)),
         },
         |limit, offset| state.db.list_users_in_group(group_id, limit, offset),
-        |&tg_user_id| {
-            (tg_user_id, format!("id {}", tg_user_id))
-        },
+        |&tg_user_id| (tg_user_id, format!("id {}", tg_user_id)),
         |total, page, total_pages| {
             let selected_count = selected_users.len();
             let header = if selected_count > 0 {
-                format!("👥 Пользователи · [{}]\nУчастников: {} (выбрано: {}) | Стр: {}/{}", group_name, total, selected_count, page, total_pages)
+                format!(
+                    "👥 Пользователи · [{}]\nУчастников: {} (выбрано: {}) | Стр: {}/{}",
+                    group_name, total, selected_count, page, total_pages
+                )
             } else {
-                format!("👥 Пользователи · [{}]\nУчастников: {} | Страница: {}/{}", group_name, total, page, total_pages)
+                format!(
+                    "👥 Пользователи · [{}]\nУчастников: {} | Страница: {}/{}",
+                    group_name, total, page, total_pages
+                )
             };
             format!("{}\n\nВыберите пользователя (⬜ - выбрать).", header)
         },
         |users, page, total_pages| {
-            crate::bot::keyboards::users_page_keyboard(users, page, total_pages, Some(group_id), &selected_users)
+            crate::bot::keyboards::users_page_keyboard(
+                users,
+                page,
+                total_pages,
+                Some(group_id),
+                &selected_users,
+            )
         },
     )
     .await
@@ -873,7 +878,12 @@ pub async fn admin_show_stats(
     let summary = state.telemt_runtime.summary().await;
     let admin_events = state.db.list_recent_admin_activities(4).await?;
     let telemt_stats = state.telemt_backend.stats_summary().await.ok().flatten();
-    let connections_summary = state.telemt_backend.connections_summary(3).await.ok().flatten();
+    let connections_summary = state
+        .telemt_backend
+        .connections_summary(3)
+        .await
+        .ok()
+        .flatten();
     let status_label = if caps.shows_systemd_unit {
         service_status_label(&summary.active_state, &summary.sub_state)
     } else {
@@ -984,7 +994,10 @@ pub async fn admin_show_stats(
         if !live.top_by_connections.is_empty() {
             for user in &live.top_by_connections {
                 if user.current_connections >= 10 {
-                    alerts.push(format!("TCP spike: {} ({})", user.username, user.current_connections));
+                    alerts.push(format!(
+                        "TCP spike: {} ({})",
+                        user.username, user.current_connections
+                    ));
                 }
             }
         }
@@ -1081,10 +1094,7 @@ pub async fn send_user_qr_to_admin(
         return Err(anyhow::anyhow!("Не найден telemt username пользователя"));
     };
 
-    let secret_opt = user
-        .secret
-        .as_deref()
-        .filter(|s| !s.is_empty());
+    let secret_opt = user.secret.as_deref().filter(|s| !s.is_empty());
     let link = state
         .telemt_backend
         .build_user_link(telemt_username, secret_opt)
@@ -1213,9 +1223,11 @@ pub async fn admin_show_groups_menu(
     let groups = state.db.list_user_groups().await?;
     let text = if groups.is_empty() {
         if selection_mode {
-            "📁 Выберите группу для выбранных пользователей\n\nПока нет ни одной группы.".to_string()
+            "📁 Выберите группу для выбранных пользователей\n\nПока нет ни одной группы."
+                .to_string()
         } else {
-            "📁 Группы пользователей\n\nПока нет ни одной группы. Нажмите «Новая группа».".to_string()
+            "📁 Группы пользователей\n\nПока нет ни одной группы. Нажмите «Новая группа»."
+                .to_string()
         }
     } else {
         if selection_mode {
@@ -1257,11 +1269,7 @@ pub async fn admin_show_group_card(
          «Снять срок» очистит общий срок группы.\n\
          «Отключить всех» удалит пользователей из telemt и локальной БД, затем удалит группу.\n\
          «Применить срок» выставит всем участникам `expiration` из RFC3339, вычисленного из unix-срока группы.",
-        group.name,
-        group.id,
-        created_line,
-        n,
-        exp_line
+        group.name, group.id, created_line, n, exp_line
     );
     upsert_screen(
         bot,

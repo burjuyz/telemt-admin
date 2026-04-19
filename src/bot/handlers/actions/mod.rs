@@ -5,9 +5,7 @@ pub mod service;
 pub mod tokens;
 pub mod users;
 
-pub use access::{
-    approve_request_and_build_link, perform_hard_ban, process_invite_token,
-};
+pub use access::{approve_request_and_build_link, perform_hard_ban, process_invite_token};
 pub use broadcast::broadcast_to_approved_users;
 pub use service::{
     admin_show_connections_summary, admin_show_service_panel, admin_show_service_panel_with_notice,

@@ -113,20 +113,14 @@ pub fn admin_home_keyboard() -> InlineKeyboardMarkup {
             InlineKeyboardButton::callback("⚙️ Сервис", CallbackAction::ShowServicePanel.encode()),
         ],
         vec![
-            InlineKeyboardButton::callback(
-                "📊 Статистика",
-                CallbackAction::ShowStats.encode(),
-            ),
+            InlineKeyboardButton::callback("📊 Статистика", CallbackAction::ShowStats.encode()),
             InlineKeyboardButton::callback(
                 "📢 Рассылка",
                 CallbackAction::PromptBroadcastApproved.encode(),
             ),
         ],
         vec![
-            InlineKeyboardButton::callback(
-                "📁 Группы",
-                CallbackAction::ShowGroupsMenu.encode(),
-            ),
+            InlineKeyboardButton::callback("📁 Группы", CallbackAction::ShowGroupsMenu.encode()),
             InlineKeyboardButton::callback(
                 "📥 Импорт из telemt",
                 CallbackAction::PromptImportUser.encode(),
@@ -314,10 +308,7 @@ fn truncate_callback_button_label(text: &str, max_chars: usize) -> String {
         return text.to_string();
     }
     let take = max_chars.saturating_sub(1);
-    format!(
-        "{}…",
-        text.chars().take(take).collect::<String>()
-    )
+    format!("{}…", text.chars().take(take).collect::<String>())
 }
 
 /// Кнопки выбора пользователя после частичного поиска (одна кнопка — одна строка).
@@ -345,7 +336,10 @@ pub fn user_lookup_candidates_keyboard(
     InlineKeyboardMarkup::new(rows)
 }
 
-pub fn users_page_keyboard_empty(_page: i64, _filter_group_id: Option<i64>) -> InlineKeyboardMarkup {
+pub fn users_page_keyboard_empty(
+    _page: i64,
+    _filter_group_id: Option<i64>,
+) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![InlineKeyboardButton::callback(
             "☑️ Выбрать все",
@@ -375,15 +369,24 @@ pub fn bulk_selection_actions_keyboard() -> InlineKeyboardMarkup {
         vec![
             InlineKeyboardButton::callback(
                 "TCP",
-                CallbackAction::BulkSetUserLimit { field: UserLimitField::MaxTcpConns }.encode(),
+                CallbackAction::BulkSetUserLimit {
+                    field: UserLimitField::MaxTcpConns,
+                }
+                .encode(),
             ),
             InlineKeyboardButton::callback(
                 "IP",
-                CallbackAction::BulkSetUserLimit { field: UserLimitField::MaxUniqueIps }.encode(),
+                CallbackAction::BulkSetUserLimit {
+                    field: UserLimitField::MaxUniqueIps,
+                }
+                .encode(),
             ),
             InlineKeyboardButton::callback(
                 "Квота",
-                CallbackAction::BulkSetUserLimit { field: UserLimitField::DataQuotaBytes }.encode(),
+                CallbackAction::BulkSetUserLimit {
+                    field: UserLimitField::DataQuotaBytes,
+                }
+                .encode(),
             ),
         ],
         vec![InlineKeyboardButton::callback(
@@ -416,28 +419,35 @@ pub fn users_page_keyboard(
     for (tg_user_id, title) in users {
         let is_selected = selected_users.contains(tg_user_id);
         let prefix = if is_selected { "☑️" } else { "⬜" };
-        
+
         let (select_action, open_action) = if let Some(group_id) = filter_group_id {
             (
-                CallbackAction::ToggleUserSelectionByGroup { tg_user_id: *tg_user_id, page, group_id },
-                CallbackAction::OpenUserCard { tg_user_id: *tg_user_id, page }
+                CallbackAction::ToggleUserSelectionByGroup {
+                    tg_user_id: *tg_user_id,
+                    page,
+                    group_id,
+                },
+                CallbackAction::OpenUserCard {
+                    tg_user_id: *tg_user_id,
+                    page,
+                },
             )
         } else {
             (
-                CallbackAction::ToggleUserSelection { tg_user_id: *tg_user_id, page },
-                CallbackAction::OpenUserCard { tg_user_id: *tg_user_id, page }
+                CallbackAction::ToggleUserSelection {
+                    tg_user_id: *tg_user_id,
+                    page,
+                },
+                CallbackAction::OpenUserCard {
+                    tg_user_id: *tg_user_id,
+                    page,
+                },
             )
         };
-        
+
         rows.push(vec![
-            InlineKeyboardButton::callback(
-                prefix.to_string(),
-                select_action.encode(),
-            ),
-            InlineKeyboardButton::callback(
-                format!("👤 {}", title),
-                open_action.encode(),
-            ),
+            InlineKeyboardButton::callback(prefix.to_string(), select_action.encode()),
+            InlineKeyboardButton::callback(format!("👤 {}", title), open_action.encode()),
         ]);
     }
 
@@ -454,13 +464,19 @@ pub fn users_page_keyboard(
             page,
             total_pages,
             if page > 1 {
-                CallbackAction::ShowUsersPageByGroup { page: prev_page, group_id }
+                CallbackAction::ShowUsersPageByGroup {
+                    page: prev_page,
+                    group_id,
+                }
             } else {
                 CallbackAction::Noop
             },
             CallbackAction::Noop,
             if page < total_pages {
-                CallbackAction::ShowUsersPageByGroup { page: next_page, group_id }
+                CallbackAction::ShowUsersPageByGroup {
+                    page: next_page,
+                    group_id,
+                }
             } else {
                 CallbackAction::Noop
             },
@@ -491,14 +507,8 @@ pub fn users_page_keyboard(
                 "📁 В группу",
                 CallbackAction::BulkAssignGroupPrompt.encode(),
             ),
-            InlineKeyboardButton::callback(
-                "⛔ Бан",
-                CallbackAction::BulkBanUsers.encode(),
-            ),
-            InlineKeyboardButton::callback(
-                "📤 CSV",
-                CallbackAction::ExportUsersCsv.encode(),
-            ),
+            InlineKeyboardButton::callback("⛔ Бан", CallbackAction::BulkBanUsers.encode()),
+            InlineKeyboardButton::callback("📤 CSV", CallbackAction::ExportUsersCsv.encode()),
         ]);
     }
 
@@ -507,10 +517,7 @@ pub fn users_page_keyboard(
             "☑️ Выбрать все",
             CallbackAction::ShowUserSelectionActions.encode(),
         ),
-        InlineKeyboardButton::callback(
-            "❌ Очистить",
-            CallbackAction::ClearUserSelection.encode(),
-        ),
+        InlineKeyboardButton::callback("❌ Очистить", CallbackAction::ClearUserSelection.encode()),
     ]);
 
     if filter_group_id.is_some() {
@@ -815,15 +822,19 @@ pub fn confirm_service_action_keyboard(action: ServiceAction) -> InlineKeyboardM
 }
 
 pub fn stats_keyboard() -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::new(vec![vec![
-        InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowStats.encode()),
-        InlineKeyboardButton::callback(
-            "📈 Top users",
-            CallbackAction::ShowConnectionsSummary.encode(),
-        ),
-    ], vec![
-        InlineKeyboardButton::callback("🏠 Главная", CallbackAction::ShowAdminHome.encode()),
-    ]])
+    InlineKeyboardMarkup::new(vec![
+        vec![
+            InlineKeyboardButton::callback("🔄 Обновить", CallbackAction::ShowStats.encode()),
+            InlineKeyboardButton::callback(
+                "📈 Top users",
+                CallbackAction::ShowConnectionsSummary.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "🏠 Главная",
+            CallbackAction::ShowAdminHome.encode(),
+        )],
+    ])
 }
 
 pub fn connections_summary_keyboard() -> InlineKeyboardMarkup {
@@ -833,10 +844,7 @@ pub fn connections_summary_keyboard() -> InlineKeyboardMarkup {
                 "🔄 Обновить",
                 CallbackAction::ShowConnectionsSummary.encode(),
             ),
-            InlineKeyboardButton::callback(
-                "⚙️ Сервис",
-                CallbackAction::ShowServicePanel.encode(),
-            ),
+            InlineKeyboardButton::callback("⚙️ Сервис", CallbackAction::ShowServicePanel.encode()),
         ],
         vec![InlineKeyboardButton::callback(
             "🏠 Главная",

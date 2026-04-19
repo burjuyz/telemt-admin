@@ -169,7 +169,11 @@ mod tests {
 
         assert!(request_columns.iter().any(|name| name == "backend_mode"));
         assert!(request_columns.iter().any(|name| name == "last_sync_error"));
-        assert!(request_columns.iter().any(|name| name == "last_seen_revision"));
+        assert!(
+            request_columns
+                .iter()
+                .any(|name| name == "last_seen_revision")
+        );
         assert!(request_columns.iter().any(|name| name == "last_synced_at"));
         assert!(request_columns.iter().any(|name| name == "invite_token_id"));
         assert!(invite_columns.iter().any(|name| name == "max_usage"));

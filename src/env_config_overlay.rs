@@ -273,8 +273,14 @@ mod tests {
 
     #[test]
     fn parse_runtime_mode_accepts_known_variants() {
-        assert_eq!(parse_runtime_mode("systemd").ok(), Some(RuntimeMode::Systemd));
-        assert_eq!(parse_runtime_mode("external").ok(), Some(RuntimeMode::External));
+        assert_eq!(
+            parse_runtime_mode("systemd").ok(),
+            Some(RuntimeMode::Systemd)
+        );
+        assert_eq!(
+            parse_runtime_mode("external").ok(),
+            Some(RuntimeMode::External)
+        );
         assert_eq!(parse_runtime_mode("none").ok(), Some(RuntimeMode::None));
         assert!(parse_runtime_mode("docker").is_err());
     }
