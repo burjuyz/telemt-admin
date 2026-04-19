@@ -175,6 +175,10 @@ pub fn group_card_keyboard(group_id: i64) -> InlineKeyboardMarkup {
             CallbackAction::GroupApplyExpiry { group_id }.encode(),
         )],
         vec![InlineKeyboardButton::callback(
+            "👥 Показать участников",
+            CallbackAction::ShowGroupMembers { group_id }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
             "⬅️ К группам",
             CallbackAction::ShowGroupsMenu.encode(),
         )],
@@ -331,16 +335,80 @@ pub fn user_lookup_candidates_keyboard(
     InlineKeyboardMarkup::new(rows)
 }
 
+pub fn users_page_keyboard_empty(_page: i64, _filter_group_id: Option<i64>) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![InlineKeyboardButton::callback(
+            "☑️ Выбрать все",
+            CallbackAction::ShowUserSelectionActions.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "❌ Очистить",
+            CallbackAction::ClearUserSelection.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "🔍 Показать всех",
+            CallbackAction::ShowUsersPage { page: 1 }.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ К списку пользователей",
+            CallbackAction::ShowUsersPage { page: 1 }.encode(),
+        )],
+    ])
+}
+
+pub fn bulk_selection_actions_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![
+        vec![InlineKeyboardButton::callback(
+            "📁 Добавить в группу",
+            CallbackAction::ShowGroupsMenu.encode(),
+        )],
+        vec![
+            InlineKeyboardButton::callback(
+                "TCP",
+                CallbackAction::BulkSetUserLimit { field: UserLimitField::MaxTcpConns }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "IP",
+                CallbackAction::BulkSetUserLimit { field: UserLimitField::MaxUniqueIps }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "Квота",
+                CallbackAction::BulkSetUserLimit { field: UserLimitField::DataQuotaBytes }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "⛔ Заблокировать выбранных",
+            CallbackAction::BulkBanUsers.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "📤 Экспорт в CSV",
+            CallbackAction::ExportUsersCsv.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "❌ Очистить выбор",
+            CallbackAction::ClearUserSelection.encode(),
+        )],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад к списку",
+            CallbackAction::ShowUsersPage { page: 1 }.encode(),
+        )],
+    ])
+}
+
 pub fn users_page_keyboard(
     users: &[(i64, String)],
     page: i64,
     total_pages: i64,
+    filter_group_id: Option<i64>,
+    selected_users: &std::collections::HashSet<i64>,
 ) -> InlineKeyboardMarkup {
     let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for (tg_user_id, title) in users {
+        let is_selected = selected_users.contains(tg_user_id);
+        let prefix = if is_selected { "☑️" } else { "⬜" };
         rows.push(vec![InlineKeyboardButton::callback(
-            format!("👤 {}", title),
-            CallbackAction::OpenUserCard {
+            format!("{} {} {}", prefix, title, if is_selected { "✓" } else { "" }),
+            CallbackAction::ToggleUserSelection {
                 tg_user_id: *tg_user_id,
                 page,
             }
@@ -356,23 +424,69 @@ pub fn users_page_keyboard(
         total_pages
     };
 
-    rows.push(page_nav_row(
-        page,
-        total_pages,
-        if page > 1 {
-            CallbackAction::ShowUsersPage { page: prev_page }
-        } else {
-            CallbackAction::Noop
-        },
-        CallbackAction::Noop,
-        if page < total_pages {
-            CallbackAction::ShowUsersPage { page: next_page }
-        } else {
-            CallbackAction::Noop
-        },
-    ));
+    if let Some(group_id) = filter_group_id {
+        rows.push(page_nav_row(
+            page,
+            total_pages,
+            if page > 1 {
+                CallbackAction::ShowUsersPageByGroup { page: prev_page, group_id }
+            } else {
+                CallbackAction::Noop
+            },
+            CallbackAction::Noop,
+            if page < total_pages {
+                CallbackAction::ShowUsersPageByGroup { page: next_page, group_id }
+            } else {
+                CallbackAction::Noop
+            },
+        ));
+    } else {
+        rows.push(page_nav_row(
+            page,
+            total_pages,
+            if page > 1 {
+                CallbackAction::ShowUsersPage { page: prev_page }
+            } else {
+                CallbackAction::Noop
+            },
+            CallbackAction::Noop,
+            if page < total_pages {
+                CallbackAction::ShowUsersPage { page: next_page }
+            } else {
+                CallbackAction::Noop
+            },
+        ));
+    }
+
+    rows.push(vec![
+        InlineKeyboardButton::callback(
+            "☑️ Выбрать все",
+            CallbackAction::ShowUserSelectionActions.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "❌ Очистить",
+            CallbackAction::ClearUserSelection.encode(),
+        ),
+    ]);
+
+    if filter_group_id.is_some() {
+        rows.push(vec![InlineKeyboardButton::callback(
+            "🔍 Показать всех",
+            CallbackAction::ShowUsersPage { page: 1 }.encode(),
+        )]);
+    } else {
+        rows.push(vec![InlineKeyboardButton::callback(
+            "🔍 Фильтр",
+            CallbackAction::ShowGroupsMenu.encode(),
+        )]);
+    }
+
     rows.push(refresh_lookup_row(
-        CallbackAction::ShowUsersPage { page },
+        if let Some(group_id) = filter_group_id {
+            CallbackAction::ShowUsersPageByGroup { page, group_id }
+        } else {
+            CallbackAction::ShowUsersPage { page }
+        },
         CallbackAction::PromptUserLookup { page },
     ));
     rows.push(vec![InlineKeyboardButton::callback(

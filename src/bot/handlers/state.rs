@@ -181,13 +181,26 @@ impl WizardState {
     }
 }
 
-#[derive(Clone)]
 pub struct BotState {
     pub config: Arc<Config>,
     pub db: Arc<Db>,
     pub telemt_backend: TelemtBackend,
     pub telemt_runtime: TelemtRuntime,
     pub bot_username: Option<String>,
+    pub selected_users: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<i64>>>,
+}
+
+impl Clone for BotState {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            db: self.db.clone(),
+            telemt_backend: self.telemt_backend.clone(),
+            telemt_runtime: self.telemt_runtime.clone(),
+            bot_username: self.bot_username.clone(),
+            selected_users: std::sync::Arc::clone(&self.selected_users),
+        }
+    }
 }
 
 pub fn telemt_username(tg_user_id: i64) -> String {

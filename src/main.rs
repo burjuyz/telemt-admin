@@ -133,6 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         telemt_backend,
         telemt_runtime,
         bot_username,
+        selected_users: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     };
     monitor::spawn_monitor(bot.clone(), state.clone());
     tracing::info!("Dispatcher initialized, bot is ready");

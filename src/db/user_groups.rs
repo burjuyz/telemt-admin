@@ -1,4 +1,5 @@
 use crate::db::{Db, current_unix_timestamp};
+use sqlx::Row;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserGroup {
@@ -97,6 +98,64 @@ impl Db {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    pub async fn list_users_in_group(
+        &self,
+        group_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<i64>, anyhow::Error> {
+        let rows = sqlx::query_scalar::<_, i64>(
+            "SELECT m.tg_user_id FROM user_group_members m
+             WHERE m.group_id = ?
+             ORDER BY m.joined_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(group_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn count_users_in_group(&self, group_id: i64) -> Result<i64, anyhow::Error> {
+        let n = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM user_group_members WHERE group_id = ?",
+        )
+        .bind(group_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n)
+    }
+
+    pub async fn get_groups_for_users(
+        &self,
+        tg_user_ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, String>, anyhow::Error> {
+        if tg_user_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders: String = tg_user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT m.tg_user_id, g.name FROM user_group_members m
+             INNER JOIN user_groups g ON g.id = m.group_id
+             WHERE m.tg_user_id IN ({})",
+            placeholders
+        );
+        let mut rows = sqlx::query(&query);
+        for id in tg_user_ids {
+            rows = rows.bind(id);
+        }
+        let results: Vec<(i64, String)> = rows.fetch_all(&self.pool).await?.into_iter()
+            .map(|row| {
+                let tg_user_id: i64 = row.get(0);
+                let name: String = row.get(1);
+                (tg_user_id, name)
+            })
+            .collect();
+        Ok(results.into_iter().collect())
     }
 
     pub async fn set_user_group_membership(

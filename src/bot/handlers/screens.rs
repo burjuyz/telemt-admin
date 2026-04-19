@@ -773,6 +773,7 @@ pub async fn admin_show_users_page(
 ) -> HandlerResult {
     let total_users = state.db.count_active_users().await?;
     let users_page_size = state.config.users_page_size.max(1);
+    let selected_users = state.selected_users.lock().unwrap().clone();
     render_paged_selector_screen(
         bot,
         PagedSelectorConfig {
@@ -784,7 +785,7 @@ pub async fn admin_show_users_page(
             empty_text:
                 "👥 Пользователи\n\nАктивных пользователей нет.\n\nМожно создать нового пользователя."
                     .to_string(),
-            empty_keyboard: crate::bot::keyboards::users_page_keyboard(&[], 1, 1),
+            empty_keyboard: crate::bot::keyboards::users_page_keyboard_empty(1, None),
         },
         |limit, offset| state.db.list_active_users_page(limit, offset),
         |user| {
@@ -797,12 +798,66 @@ pub async fn admin_show_users_page(
             (user.tg_user_id, format!("{} (id {})", short, user.tg_user_id))
         },
         |total, page, total_pages| {
-            format!(
-                "👥 Пользователи · {}\nСтраница: {}/{}\n\nВыберите пользователя.",
-                total, page, total_pages
-            )
+            let selected_count = selected_users.len();
+            let header = if selected_count > 0 {
+                format!("👥 Пользователи · {} (выбрано: {})\nСтраница: {}/{}", total, selected_count, page, total_pages)
+            } else {
+                format!("👥 Пользователи · {}\nСтраница: {}/{}", total, page, total_pages)
+            };
+            format!("{}\n\nВыберите пользователя (⬜ - выбрать).", header)
         },
-        crate::bot::keyboards::users_page_keyboard,
+        |users, page, total_pages| {
+            crate::bot::keyboards::users_page_keyboard(users, page, total_pages, None, &selected_users)
+        },
+    )
+    .await
+}
+
+pub async fn admin_show_users_page_by_group(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    requested_page: i64,
+    group_id: i64,
+    message_id: Option<MessageId>,
+) -> HandlerResult {
+    let group = state.db.get_user_group_by_id(group_id).await?;
+    let group_name = group.map(|g| g.name).unwrap_or_else(|| "Группа".to_string());
+    
+    let total_users = state.db.count_users_in_group(group_id).await?;
+    let users_page_size = state.config.users_page_size.max(1);
+    let selected_users = state.selected_users.lock().unwrap().clone();
+    
+    render_paged_selector_screen(
+        bot,
+        PagedSelectorConfig {
+            chat_id,
+            message_id,
+            total_items: total_users,
+            page_size: users_page_size,
+            requested_page,
+            empty_text: format!(
+                "👥 Пользователи · [{}]\n\nПользователей в группе нет.",
+                group_name
+            ),
+            empty_keyboard: crate::bot::keyboards::users_page_keyboard_empty(1, Some(group_id)),
+        },
+        |limit, offset| state.db.list_users_in_group(group_id, limit, offset),
+        |&tg_user_id| {
+            (tg_user_id, format!("id {}", tg_user_id))
+        },
+        |total, page, total_pages| {
+            let selected_count = selected_users.len();
+            let header = if selected_count > 0 {
+                format!("👥 Пользователи · [{}]\nУчастников: {} (выбрано: {}) | Стр: {}/{}", group_name, total, selected_count, page, total_pages)
+            } else {
+                format!("👥 Пользователи · [{}]\nУчастников: {} | Страница: {}/{}", group_name, total, page, total_pages)
+            };
+            format!("{}\n\nВыберите пользователя (⬜ - выбрать).", header)
+        },
+        |users, page, total_pages| {
+            crate::bot::keyboards::users_page_keyboard(users, page, total_pages, Some(group_id), &selected_users)
+        },
     )
     .await
 }

@@ -2,7 +2,7 @@ use super::super::common::{ack_callback, admin_callback_target};
 use super::AdminActionResult;
 use crate::bot::handlers::actions::groups::{apply_group_expiry_to_members, deactivate_all_members};
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::screens::{admin_show_group_card, admin_show_groups_menu};
+use crate::bot::handlers::screens::{admin_show_group_card, admin_show_groups_menu, admin_show_users_page_by_group};
 use crate::bot::handlers::state::{BotState, WizardState, set_wizard_state};
 use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
@@ -32,6 +32,24 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_group_card(bot, chat_id, Some(message_id), state, &group).await?;
+            Ok(true)
+        }
+        CallbackAction::ShowGroupMembers { group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let Some(group) = state.db.get_user_group_by_id(group_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                return Ok(true);
+            };
+            let member_count = state.db.count_users_in_group(group_id).await?;
+            ack_callback(
+                bot,
+                q.id.clone(),
+                Some(&format!("Пользователей в группе «{}»: {}", group.name, member_count)),
+                false,
+            ).await?;
+            admin_show_users_page_by_group(bot, chat_id, state, 1, group_id, Some(message_id)).await?;
             Ok(true)
         }
         CallbackAction::PromptCreateGroup => {

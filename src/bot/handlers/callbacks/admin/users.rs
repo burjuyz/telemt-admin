@@ -6,12 +6,14 @@ use crate::bot::handlers::actions::{
 };
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    admin_show_users_page, send_user_qr_to_admin, show_user_ban_confirm,
+    admin_show_users_page, admin_show_users_page_by_group, send_user_qr_to_admin, show_user_ban_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
-use crate::bot::handlers::state::{BotState, clear_wizard_state};
+use crate::bot::handlers::state::{BotState, clear_wizard_state, set_wizard_state, WizardState};
+use crate::bot::keyboards::bulk_selection_actions_keyboard;
 use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
+use teloxide::types::InputFile;
 
 pub async fn handle(
     bot: &Bot,
@@ -26,6 +28,58 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_users_page(bot, chat_id, state, page, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::ShowUsersPageByGroup { page, group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            admin_show_users_page_by_group(bot, chat_id, state, page, group_id, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::ToggleUserSelection { tg_user_id, page } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            {
+                let mut selected = state.selected_users.lock().unwrap();
+                if selected.contains(&tg_user_id) {
+                    selected.remove(&tg_user_id);
+                } else {
+                    selected.insert(tg_user_id);
+                }
+            }
+            let count = state.selected_users.lock().unwrap().len();
+            ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {}", count)), false).await?;
+            admin_show_users_page(bot, chat_id, state, page, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::ClearUserSelection => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            {
+                let mut selected = state.selected_users.lock().unwrap();
+                selected.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some("Выбор очищен"), false).await?;
+            admin_show_users_page(bot, chat_id, state, 1, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::ShowUserSelectionActions => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let count = state.selected_users.lock().unwrap().len();
+            if count == 0 {
+                ack_callback(bot, q.id.clone(), Some("Сначала выберите пользователей"), false).await?;
+                return Ok(true);
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {} пользователей", count)), false).await?;
+            bot.edit_message_text(chat_id, message_id, format!("Выбрано пользователей: {}\n\nВыберите действие:", count))
+                .reply_markup(bulk_selection_actions_keyboard())
+                .await?;
             Ok(true)
         }
         CallbackAction::PromptUserLookup { page } => {
@@ -207,6 +261,124 @@ pub async fn handle(
             state.db.set_user_group_membership(tg_user_id, gid).await?;
             ack_callback(bot, q.id.clone(), Some("Сохранено"), false).await?;
             show_user_card(bot, chat_id, Some(message_id), &user, page, state).await?;
+            Ok(true)
+        }
+        CallbackAction::BulkAssignGroup { group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let selected: Vec<i64> = {
+                let guard = state.selected_users.lock().unwrap();
+                guard.iter().copied().collect()
+            };
+            if selected.is_empty() {
+                ack_callback(bot, q.id.clone(), Some("Нет выбранных пользователей"), false).await?;
+                return Ok(true);
+            }
+            for tg_user_id in &selected {
+                state.db.set_user_group_membership(*tg_user_id, Some(group_id)).await?;
+            }
+            let count = selected.len();
+            let group = state.db.get_user_group_by_id(group_id).await?;
+            let group_name = group.map(|g| g.name).unwrap_or_else(|| "группы".to_string());
+            {
+                let mut guard = state.selected_users.lock().unwrap();
+                guard.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Добавлено {} пользователей в «{}»", count, group_name)), false).await?;
+            admin_show_users_page(bot, chat_id, state, 1, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::BulkBanUsers => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let selected: Vec<i64> = {
+                let guard = state.selected_users.lock().unwrap();
+                guard.iter().copied().collect()
+            };
+            if selected.is_empty() {
+                ack_callback(bot, q.id.clone(), Some("Нет выбранных пользователей"), false).await?;
+                return Ok(true);
+            }
+            for tg_user_id in &selected {
+                let _ = perform_hard_ban(state, *tg_user_id).await;
+            }
+            let count = selected.len();
+            {
+                let mut guard = state.selected_users.lock().unwrap();
+                guard.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Заблокировано: {} пользователей", count)), false).await?;
+            admin_show_users_page(bot, chat_id, state, 1, Some(message_id)).await?;
+            Ok(true)
+        }
+        CallbackAction::BulkSetUserLimit { field } => {
+            let Some((admin_id, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let selected_count = {
+                let guard = state.selected_users.lock().unwrap();
+                guard.len()
+            };
+            if selected_count == 0 {
+                ack_callback(bot, q.id.clone(), Some("Нет выбранных пользователей"), false).await?;
+                return Ok(true);
+            }
+            let field_name = match field {
+                crate::bot::handlers::callback_data::UserLimitField::MaxTcpConns => "TCP-лимит",
+                crate::bot::handlers::callback_data::UserLimitField::MaxUniqueIps => "IP-лимит",
+                crate::bot::handlers::callback_data::UserLimitField::DataQuotaBytes => "квота трафика",
+                crate::bot::handlers::callback_data::UserLimitField::Expiration => "срок действия",
+            };
+            set_wizard_state(
+                state,
+                admin_id,
+                WizardState::AdminSetUserLimitAwaitingValue {
+                    tg_user_id: 0,
+                    page: 1,
+                    field,
+                },
+            ).await?;
+            {
+                let mut guard = state.selected_users.lock().unwrap();
+                guard.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Жду {} для {} пользователей", field_name, selected_count)), false).await?;
+            bot.send_message(
+                chat_id,
+                format!("Введите {} для выбранных пользователей.", field_name),
+            )
+            .await?;
+            Ok(true)
+        }
+        CallbackAction::ExportUsersCsv => {
+            let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let users = state.db.list_active_users_page(1000, 0).await?;
+            let count = users.len();
+            let mut csv = String::from("id,username,display_name,telemt_username,created_at\n");
+            for user in &users {
+                let username = user.tg_username.clone().unwrap_or_default();
+                let display_name = user.tg_display_name.clone().unwrap_or_default();
+                let telemt_username = user.telemt_username.clone().unwrap_or_default();
+                csv.push_str(&format!("{},{},{},{},{}\n", 
+                    user.tg_user_id, 
+                    username.replace(',', ";"),
+                    display_name.replace(',', ";"),
+                    telemt_username,
+                    user.created_at
+                ));
+            }
+            {
+                let mut guard = state.selected_users.lock().unwrap();
+                guard.clear();
+            }
+            ack_callback(bot, q.id.clone(), Some(&format!("Экспорт {} пользователей", count)), false).await?;
+            let filename = format!("users_export_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+            bot.send_document(chat_id, InputFile::memory(csv.into_bytes()).file_name(filename))
+                .await?;
             Ok(true)
         }
         _ => Ok(false),

@@ -73,6 +73,7 @@ pub enum CallbackAction {
     ShowPendingRequestsPage { page: i64 },
     OpenPendingRequest { request_id: i64, page: i64 },
     ShowUsersPage { page: i64 },
+    ShowUsersPageByGroup { page: i64, group_id: i64 },
     PromptUserLookup { page: i64 },
     OpenUserCard { tg_user_id: i64, page: i64 },
     PromptUserLimit {
@@ -118,6 +119,14 @@ pub enum CallbackAction {
         page: i64,
     },
     PromptImportUser,
+    ShowGroupMembers { group_id: i64 },
+    ToggleUserSelection { tg_user_id: i64, page: i64 },
+    ClearUserSelection,
+    ShowUserSelectionActions,
+    BulkAssignGroup { group_id: i64 },
+    BulkSetUserLimit { field: UserLimitField },
+    BulkBanUsers,
+    ExportUsersCsv,
 }
 
 impl CallbackAction {
@@ -137,6 +146,7 @@ impl CallbackAction {
                 format!("v1|admin|pending|open|{request_id}|{page}")
             }
             Self::ShowUsersPage { page } => format!("v1|admin|users|page|{page}"),
+            Self::ShowUsersPageByGroup { page, group_id } => format!("v1|admin|users|page|{page}|group|{group_id}"),
             Self::PromptUserLookup { page } => format!("v1|admin|users|lookup|{page}"),
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
@@ -214,12 +224,26 @@ impl CallbackAction {
             Self::UserGroupPicker { tg_user_id, page } => {
                 format!("v1|admin|user|group|pick|{tg_user_id}|{page}")
             }
-            Self::AssignUserToGroup {
+Self::AssignUserToGroup {
                 tg_user_id,
                 group_id,
                 page,
-            } => format!("v1|admin|user|group|set|{tg_user_id}|{group_id}|{page}"),
-            Self::PromptImportUser => "v1|admin|import".to_string(),
+            } => format!("v1|admin|user|group|set|{}|{}|{}", tg_user_id, group_id, page),
+Self::PromptImportUser => "v1|admin|import".to_string(),
+            Self::ShowGroupMembers { group_id } => format!("v1|admin|groups|members|{}", group_id),
+            Self::ToggleUserSelection { tg_user_id, page } => {
+                format!("v1|admin|users|select|{}|{}", tg_user_id, page)
+            }
+            Self::ClearUserSelection => "v1|admin|users|select|clear".to_string(),
+            Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
+            Self::BulkAssignGroup { group_id } => {
+                format!("v1|admin|users|bulk|group|{}", group_id)
+            }
+            Self::BulkSetUserLimit { field } => {
+                format!("v1|admin|users|bulk|limit|{}", field.as_str())
+            }
+            Self::BulkBanUsers => "v1|admin|users|bulk|ban".to_string(),
+            Self::ExportUsersCsv => "v1|admin|users|export|csv".to_string(),
         }
     }
 
@@ -250,6 +274,10 @@ impl CallbackAction {
             }
             ["v1", "admin", "users", "page", page] => Some(Self::ShowUsersPage {
                 page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "users", "page", page, "group", group_id] => Some(Self::ShowUsersPageByGroup {
+                page: parse_i64(page)?.max(1),
+                group_id: parse_i64(group_id)?,
             }),
             ["v1", "admin", "users", "lookup", page] => Some(Self::PromptUserLookup {
                 page: parse_i64(page)?.max(1),
@@ -370,6 +398,23 @@ impl CallbackAction {
                 })
             },
             ["v1", "admin", "import"] => Some(Self::PromptImportUser),
+            ["v1", "admin", "groups", "members", group_id] => Some(Self::ShowGroupMembers {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "users", "select", "clear"] => Some(Self::ClearUserSelection),
+            ["v1", "admin", "users", "select", "actions"] => Some(Self::ShowUserSelectionActions),
+            ["v1", "admin", "users", "select", tg_user_id, page] => Some(Self::ToggleUserSelection {
+                tg_user_id: parse_i64(tg_user_id)?,
+                page: parse_i64(page)?.max(1),
+            }),
+            ["v1", "admin", "users", "bulk", "group", group_id] => Some(Self::BulkAssignGroup {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "users", "bulk", "limit", field] => Some(Self::BulkSetUserLimit {
+                field: UserLimitField::parse(field)?,
+            }),
+            ["v1", "admin", "users", "bulk", "ban"] => Some(Self::BulkBanUsers),
+            ["v1", "admin", "users", "export", "csv"] => Some(Self::ExportUsersCsv),
             _ => None,
         }
     }
