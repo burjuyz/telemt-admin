@@ -102,7 +102,7 @@ impl WizardState {
         }
     }
 
-    fn decode(value: &str) -> Option<Self> {
+    pub fn decode(value: &str) -> Option<Self> {
         match value {
             "awaiting_invite_token" => Some(Self::AwaitingInviteToken),
             "admin_delete_awaiting_target" => Some(Self::AdminDeleteAwaitingTarget),

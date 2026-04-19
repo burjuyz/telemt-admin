@@ -4,7 +4,7 @@ use super::actions::{
     process_invite_token, prompt_delete_confirmation,
 };
 use super::callback_data::CallbackAction;
-use super::keyboards;
+use crate::bot::keyboards;
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
     BotState, WizardState, clear_wizard_state, is_admin_message, sender_display_name,

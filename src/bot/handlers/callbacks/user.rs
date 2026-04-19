@@ -1,12 +1,13 @@
 use super::common::{ack_callback, replace_wizard_state};
 use crate::bot::handlers::actions::try_auto_import_remote_user_by_tg_id;
+use crate::bot::keyboards;
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::keyboards;
 use crate::bot::handlers::screens::{
     show_admin_home, show_user_home, show_user_link_screen, show_usage_guide,
 };
 use crate::bot::handlers::shared::callback_message_target;
-use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state};
+use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
+use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
 
 pub async fn handle_user_action(
@@ -106,11 +107,11 @@ pub async fn handle_user_action(
             let user_id = q.from.id.0 as i64;
             let state_key = state.db.get_wizard_state(user_id).await?;
             let current_state = WizardState::decode(state_key.as_deref().unwrap_or(""));
-            let (prev_auto_approve, new_state) = match current_state {
+            let (_prev_auto_approve, new_state) = match current_state {
                 Some(WizardState::AdminTokenAwaitingMaxIps { auto_approve, .. }) => {
                     (auto_approve, WizardState::AdminTokenAwaitingExpiration { auto_approve })
                 }
-                Some(WizardState::AdminTokenAwaitingDataQuota { auto_approve, expiration_days, max_unique_ips }) => {
+                Some(WizardState::AdminTokenAwaitingDataQuota { auto_approve, expiration_days, .. }) => {
                     (auto_approve, WizardState::AdminTokenAwaitingMaxIps { auto_approve, expiration_days })
                 }
                 _ => {
@@ -121,7 +122,7 @@ pub async fn handle_user_action(
             };
             set_wizard_state(state, user_id, new_state).await?;
             let step_text = match current_state {
-                Some(WizardState::AdminTokenAwaitingMaxIps { auto_approve, .. }) => {
+                Some(WizardState::AdminTokenAwaitingMaxIps { .. }) => {
                     "Выберите срок доступа пользователя в днях:\n• 30 дней\n• 60 дней\n• 180 дней\n• или другое число (1-365)"
                 }
                 Some(WizardState::AdminTokenAwaitingDataQuota { .. }) => {
