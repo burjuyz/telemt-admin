@@ -1185,8 +1185,7 @@ fn render_connections_summary_text(
         }
         None => {
             let mut text =
-                "📈 Top пользователей\n\nRuntime endpoint недоступен или выключен в telemt API."
-                    .to_string();
+                "📈 Top пользователей\n\nФункция отключена или не настроена в telemt.".to_string();
             if let Some(error) = error {
                 text.push_str("\n\nПричина: ");
                 text.push_str(&compact_line(error, 90));

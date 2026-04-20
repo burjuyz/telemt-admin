@@ -265,6 +265,9 @@ impl ApiTelemtBackend {
             .client
             .get_success::<RuntimeConnectionsSummaryTop>(&path)
             .await?;
+        if !response.data.enabled {
+            anyhow::bail!("Функция Top пользователей отключена в настройках telemt (runtime connections endpoint)");
+        }
         let Some(data) = response.data.data else {
             return Ok(None);
         };
