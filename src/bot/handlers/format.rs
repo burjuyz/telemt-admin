@@ -369,7 +369,7 @@ mod tests {
         let text = render_user_card_text(&sample_request(), Some(&sample_runtime_info()));
 
         assert!(text.contains("Alice"));
-        assert!(text.contains("1386566294"));
+        assert!(text.contains("42"));
         assert!(text.contains("🔗 tg_"));
         assert!(text.contains("📡 ●"));
         assert!(text.contains("соединений"));
