@@ -369,20 +369,22 @@ mod tests {
         let text = render_user_card_text(&sample_request(), Some(&sample_runtime_info()));
 
         assert!(text.contains("Alice"));
-        assert!(text.contains("control_api"));
-        assert!(text.contains("runtime source: control_api"));
-        assert!(text.contains("live connections: 2"));
-        assert!(text.contains("links: 2"));
-        assert!(text.contains("sync error: нет"));
-        assert!(text.contains("ID ссылки (invite): 7"));
+        assert!(text.contains("1386566294"));
+        assert!(text.contains("🔗 tg_"));
+        assert!(text.contains("📡 ●"));
+        assert!(text.contains("соединений"));
     }
 
     #[test]
-    fn render_user_card_text_shows_dash_when_no_invite_token_id() {
+    fn render_user_card_text_shows_limits() {
         let mut req = sample_request();
-        req.invite_token_id = None;
-        let text = render_user_card_text(&req, None);
-        assert!(text.contains("ID ссылки (invite): —"));
+        let mut info = sample_runtime_info();
+        info.max_tcp_conns = Some(10);
+        info.current_connections = Some(5);
+        let text = render_user_card_text(&req, Some(&info));
+
+        assert!(text.contains("TCP: 10"));
+        assert!(text.contains("соединений"));
     }
 
     #[test]
