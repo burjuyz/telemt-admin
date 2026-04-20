@@ -187,6 +187,7 @@ pub enum CallbackAction {
     /// Рассылка сообщения всем пользователям со статусом approved.
     PromptBroadcastApproved,
     ShowGroupsMenu,
+    ShowUsersGroupFilter,
     OpenGroupCard {
         group_id: i64,
     },
@@ -346,6 +347,7 @@ impl CallbackAction {
             }
             Self::PromptBroadcastApproved => "v1|admin|broadcast".to_string(),
             Self::ShowGroupsMenu => "v1|admin|groups".to_string(),
+            Self::ShowUsersGroupFilter => "v1|admin|users|group_filter".to_string(),
             Self::OpenGroupCard { group_id } => format!("v1|admin|groups|open|{group_id}"),
             Self::PromptCreateGroup => "v1|admin|groups|create".to_string(),
             Self::PromptGroupExpiry { group_id } => {
@@ -575,6 +577,7 @@ impl CallbackAction {
             }),
             ["v1", "admin", "broadcast"] => Some(Self::PromptBroadcastApproved),
             ["v1", "admin", "groups"] => Some(Self::ShowGroupsMenu),
+            ["v1", "admin", "users", "group_filter"] => Some(Self::ShowUsersGroupFilter),
             ["v1", "admin", "groups", "open", group_id] => Some(Self::OpenGroupCard {
                 group_id: parse_i64(group_id)?,
             }),
@@ -735,6 +738,7 @@ mod tests {
                 page: 5,
             },
             CallbackAction::ShowGroupsMenu,
+            CallbackAction::ShowUsersGroupFilter,
             CallbackAction::OpenGroupCard { group_id: 7 },
             CallbackAction::PromptCreateGroup,
             CallbackAction::PromptGroupExpiry { group_id: 8 },

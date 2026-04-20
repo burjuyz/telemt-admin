@@ -158,6 +158,21 @@ pub fn groups_menu_keyboard(
     InlineKeyboardMarkup::new(rows)
 }
 
+pub fn users_group_filter_keyboard(groups: &[crate::db::UserGroup]) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    for g in groups {
+        rows.push(vec![InlineKeyboardButton::callback(
+            format!("📁 {}", g.name),
+            CallbackAction::ShowUsersPageByGroup { page: 1, group_id: g.id }.encode(),
+        )]);
+    }
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ К списку пользователей",
+        CallbackAction::ShowUsersPage { page: 1 }.encode(),
+    )]);
+    InlineKeyboardMarkup::new(rows)
+}
+
 pub fn group_card_keyboard(group_id: i64) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
@@ -528,7 +543,7 @@ pub fn users_page_keyboard(
     } else {
         rows.push(vec![InlineKeyboardButton::callback(
             "🔍 Фильтр",
-            CallbackAction::ShowGroupsMenu.encode(),
+            CallbackAction::ShowUsersGroupFilter.encode(),
         )]);
     }
 

@@ -5,8 +5,8 @@ use crate::bot::handlers::actions::groups::{
 };
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    admin_show_group_card, admin_show_groups_menu, admin_show_users_page,
-    admin_show_users_page_by_group,
+    admin_show_group_card, admin_show_groups_menu, admin_show_users_group_filter_menu,
+    admin_show_users_page, admin_show_users_page_by_group,
 };
 use crate::bot::handlers::state::{BotState, WizardState, set_wizard_state};
 use teloxide::payloads::EditMessageTextSetters;
@@ -25,6 +25,14 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_groups_menu(bot, chat_id, Some(message_id), state, false).await?;
+            Ok(true)
+        }
+        CallbackAction::ShowUsersGroupFilter => {
+            let Some((_, chat_id, _)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            admin_show_users_group_filter_menu(bot, chat_id, None, state).await?;
             Ok(true)
         }
         CallbackAction::OpenGroupCard { group_id } => {

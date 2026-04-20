@@ -1246,6 +1246,28 @@ pub async fn admin_show_groups_menu(
     .await
 }
 
+pub async fn admin_show_users_group_filter_menu(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+) -> HandlerResult {
+    let groups = state.db.list_user_groups().await?;
+    let text = if groups.is_empty() {
+        "🔍 Фильтр по группе\n\nПока нет ни одной группы.".to_string()
+    } else {
+        "🔍 Фильтр по группе\n\nВыберите группу для отображения её пользователей.".to_string()
+    };
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text,
+        crate::bot::keyboards::users_group_filter_keyboard(&groups),
+    )
+    .await
+}
+
 pub async fn admin_show_group_card(
     bot: &Bot,
     chat_id: ChatId,
