@@ -275,6 +275,7 @@ pub fn render_upstreams_summary_text(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::db::{RegistrationRequest, RequestStatus};
     use crate::telemt_backend::{TelemtBackendMode, TelemtUserInfo};
 
