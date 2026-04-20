@@ -39,6 +39,7 @@ pub struct TelemtRuntimeEvent {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TelemtUserInfo {
     pub source: TelemtBackendMode,
     pub user_ad_tag: Option<String>,
@@ -103,6 +104,7 @@ pub struct TelemtConnectionsSummary {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TelemtUpstreamDc {
     pub dc: u64,
     pub latency_ms: Option<f64>,
@@ -110,6 +112,7 @@ pub struct TelemtUpstreamDc {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TelemtUpstream {
     pub route_kind: String,
     pub healthy: bool,
@@ -118,6 +121,7 @@ pub struct TelemtUpstream {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TelemtUpstreamsSummary {
     pub healthy_total: u64,
     pub configured_total: u64,

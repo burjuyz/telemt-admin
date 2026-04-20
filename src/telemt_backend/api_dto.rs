@@ -242,6 +242,7 @@ pub(crate) struct UpstreamsSummary {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct Upstream {
     pub(crate) upstream_id: u64,
     pub(crate) route_kind: String,
@@ -256,6 +257,7 @@ pub(crate) struct Upstream {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct UpstreamDc {
     pub(crate) dc: u64,
     #[serde(default)]

@@ -30,6 +30,7 @@ pub enum RegisterResult {
 }
 
 #[derive(Debug, Clone, FromRow)]
+#[allow(dead_code)]
 pub struct RegistrationRequest {
     pub id: i64,
     pub tg_user_id: i64,

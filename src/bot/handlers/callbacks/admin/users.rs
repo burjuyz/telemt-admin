@@ -284,7 +284,7 @@ pub async fn handle(
                 }
             };
             ack_callback(bot, q.id.clone(), Some(status_text), false).await?;
-            if let Some((chat_id, message_id)) = callback_message_target(q) {
+            if let Some((chat_id, _message_id)) = callback_message_target(q) {
                 bot.send_message(chat_id, status_text).await?;
             }
             Ok(true)
