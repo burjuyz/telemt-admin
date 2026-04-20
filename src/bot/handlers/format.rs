@@ -180,7 +180,7 @@ pub fn render_user_card_text(
     runtime_info: Option<&TelemtUserInfo>,
 ) -> String {
     let display_name = user_display_name(user);
-    let status = user.status.as_str();
+    let status = user.status.to_string();
     let tg_user_id = user.tg_user_id;
 
     let current_connections = runtime_info

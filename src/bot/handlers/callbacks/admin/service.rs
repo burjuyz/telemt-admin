@@ -45,7 +45,7 @@ pub async fn handle(
                     (None, Some(e.to_string()))
                 }
             };
-            admin_show_upstreams_summary_screen(bot, chat_id, message_id, summary, error).await?;
+            admin_show_upstreams_summary_screen(bot, chat_id, Some(message_id), summary, error).await?;
             Ok(true)
         }
         CallbackAction::ConfirmServiceAction { action } => {
