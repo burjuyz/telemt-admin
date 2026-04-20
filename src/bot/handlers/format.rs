@@ -505,16 +505,43 @@ pub fn render_upstreams_summary_text(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_bytes_human, render_invite_token_button_title, render_upstreams_summary_text,
-        render_user_card_text, usage_guide_text, user_display_name,
-    };
+    use crate::db::{InviteToken, RegistrationRequest, RequestStatus};
+    use crate::telemt_backend::{TelemtBackendMode, TelemtUserInfo};
 
-        let title = render_invite_token_button_title(&token);
+    fn sample_request() -> RegistrationRequest {
+        RegistrationRequest {
+            id: 1,
+            tg_user_id: 42,
+            tg_username: Some("alice".to_string()),
+            tg_display_name: Some("Alice".to_string()),
+            status: RequestStatus::Approved,
+            telemt_username: Some("tg_42".to_string()),
+            secret: Some("secret".to_string()),
+            created_at: 1_700_000_000,
+            backend_mode: Some("control_api".to_string()),
+            last_sync_error: None,
+            last_seen_revision: Some("rev-123".to_string()),
+            last_synced_at: Some(1_700_000_100),
+            invite_token_id: Some(7),
+        }
+    }
 
-        assert!(title.contains("TOKEN123"));
-        assert!(title.contains("AUTO"));
-        assert!(title.contains("invite до "));
+    fn sample_runtime_info() -> TelemtUserInfo {
+        TelemtUserInfo {
+            source: TelemtBackendMode::ControlApi,
+            user_ad_tag: Some("promo".to_string()),
+            max_tcp_conns: Some(10),
+            expiration_rfc3339: Some("2026-04-01T00:00:00Z".to_string()),
+            data_quota_bytes: Some(4096),
+            max_unique_ips: Some(3),
+            current_connections: Some(2),
+            active_unique_ips: Some(1),
+            active_unique_ips_list: vec!["1.1.1.1".to_string()],
+            recent_unique_ips: Some(2),
+            recent_unique_ips_list: vec!["1.1.1.1".to_string(), "2.2.2.2".to_string()],
+            total_octets: Some(8192),
+            links: vec!["link-1".to_string(), "link-2".to_string()],
+        }
     }
 
     #[test]
@@ -608,6 +635,3 @@ pub fn render_upstreams_summary_text(
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
