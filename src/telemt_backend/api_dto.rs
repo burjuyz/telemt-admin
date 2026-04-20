@@ -219,3 +219,53 @@ pub(crate) struct RuntimeConnectionUserData {
     pub(crate) current_connections: u64,
     pub(crate) total_octets: u64,
 }
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpstreamsData {
+    #[allow(dead_code)]
+    pub(crate) enabled: bool,
+    #[serde(default)]
+    pub(crate) summary: Option<UpstreamsSummary>,
+    #[serde(default)]
+    pub(crate) upstreams: Option<Vec<Upstream>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpstreamsSummary {
+    pub(crate) configured_total: u64,
+    pub(crate) healthy_total: u64,
+    pub(crate) unhealthy_total: u64,
+    pub(crate) direct_total: u64,
+    pub(crate) socks4_total: u64,
+    pub(crate) socks5_total: u64,
+    pub(crate) shadowsocks_total: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Upstream {
+    pub(crate) upstream_id: u64,
+    pub(crate) route_kind: String,
+    pub(crate) address: String,
+    pub(crate) healthy: bool,
+    pub(crate) fails: u64,
+    pub(crate) last_check_age_secs: u64,
+    #[serde(default)]
+    pub(crate) effective_latency_ms: Option<f64>,
+    #[serde(default)]
+    pub(crate) dc: Vec<UpstreamDc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpstreamDc {
+    pub(crate) dc: u64,
+    #[serde(default)]
+    pub(crate) latency_ema_ms: Option<f64>,
+    #[serde(default)]
+    pub(crate) ip_preference: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RotateSecretResponse {
+    pub(crate) user: UserInfo,
+    pub(crate) secret: String,
+}

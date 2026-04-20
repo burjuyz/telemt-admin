@@ -113,6 +113,13 @@ pub enum CallbackAction {
     ShowStats,
     ShowServicePanel,
     ShowConnectionsSummary,
+    ShowUpstreamsSummary,
+    ConfirmUserRotateSecret {
+        tg_user_id: i64,
+    },
+    ExecuteUserRotateSecret {
+        tg_user_id: i64,
+    },
     ConfirmServiceAction {
         action: ServiceAction,
     },
@@ -285,6 +292,13 @@ impl CallbackAction {
             Self::ShowStats => "v1|admin|stats".to_string(),
             Self::ShowServicePanel => "v1|admin|service".to_string(),
             Self::ShowConnectionsSummary => "v1|admin|service|connections".to_string(),
+            Self::ShowUpstreamsSummary => "v1|admin|service|upstreams".to_string(),
+            Self::ConfirmUserRotateSecret { tg_user_id } => {
+                format!("v1|admin|user|rotate_secret|confirm|{}", tg_user_id)
+            }
+            Self::ExecuteUserRotateSecret { tg_user_id } => {
+                format!("v1|admin|user|rotate_secret|execute|{}", tg_user_id)
+            }
             Self::ConfirmServiceAction { action } => {
                 format!("v1|admin|service|confirm|{}", action.as_str())
             }
@@ -475,6 +489,17 @@ impl CallbackAction {
             ["v1", "admin", "stats"] => Some(Self::ShowStats),
             ["v1", "admin", "service"] => Some(Self::ShowServicePanel),
             ["v1", "admin", "service", "connections"] => Some(Self::ShowConnectionsSummary),
+            ["v1", "admin", "service", "upstreams"] => Some(Self::ShowUpstreamsSummary),
+            ["v1", "admin", "user", "rotate_secret", "confirm", tg_user_id] => {
+                Some(Self::ConfirmUserRotateSecret {
+                    tg_user_id: parse_i64(tg_user_id)?,
+                })
+            }
+            ["v1", "admin", "user", "rotate_secret", "execute", tg_user_id] => {
+                Some(Self::ExecuteUserRotateSecret {
+                    tg_user_id: parse_i64(tg_user_id)?,
+                })
+            }
             ["v1", "admin", "service", "confirm", action] => Some(Self::ConfirmServiceAction {
                 action: ServiceAction::parse(action)?,
             }),
@@ -756,6 +781,9 @@ mod tests {
             },
             CallbackAction::PromptImportUser,
             CallbackAction::PromptBroadcastApproved,
+            CallbackAction::ShowUpstreamsSummary,
+            CallbackAction::ConfirmUserRotateSecret { tg_user_id: 123 },
+            CallbackAction::ExecuteUserRotateSecret { tg_user_id: 456 },
         ];
 
         for case in cases {

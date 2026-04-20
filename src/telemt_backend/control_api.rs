@@ -11,8 +11,9 @@ use crate::telemt_cfg::TelemtConfig;
 use super::api_client::TelemtApiClient;
 use super::api_dto::{
     ApiUserInfo, CreateUserRequest, CreateUserResponse, HealthData, MeSelftestTop,
-    RuntimeConnectionsSummaryTop, RuntimeEventsData, RuntimeGatesData, RuntimeInitializationData,
-    SecurityPostureData, StatsSummaryData, SystemInfoData, UpstreamQualityTop, UserInfo,
+    RuntimeConnectionsSummaryTop, RotateSecretResponse, RuntimeEventsData, RuntimeGatesData,
+    RuntimeInitializationData, SecurityPostureData, StatsSummaryData, SystemInfoData,
+    UpstreamQualityTop, UpstreamsData, UserInfo,
 };
 use super::legacy::LegacyTelemtBackend;
 use super::mappers::{map_api_user_info, map_connection_top_user, pick_best_link};
@@ -437,6 +438,43 @@ impl ApiTelemtBackend {
             events: event_rows,
             last_revision: revision,
         })
+    }
+
+    pub(crate) async fn rotate_secret(
+        &self,
+        username: &str,
+    ) -> Result<ProvisionedUser, anyhow::Error> {
+        let path = format!("/v1/users/{}/rotate-secret", username);
+        let response = self
+            .client
+            .mutate_with_retry::<(), RotateSecretResponse>(Method::POST, &path, None)
+            .await?;
+        let RotateSecretResponse { user, secret } = response.data;
+        let link = if self.prefer_api_links {
+            match pick_best_link(&user.links) {
+                Some(link) => Some(link),
+                None => self.try_build_fallback_link(Some(&secret)).await.ok(),
+            }
+        } else {
+            match self.try_build_fallback_link(Some(&secret)).await {
+                Ok(link) => Some(link),
+                Err(_) => pick_best_link(&user.links),
+            }
+        };
+        Ok(ProvisionedUser {
+            secret,
+            link,
+            mode: TelemtBackendMode::ControlApi,
+            revision: Some(response.revision),
+        })
+    }
+
+    pub(crate) async fn upstreams_summary(&self) -> Result<UpstreamsData, anyhow::Error> {
+        let response = self
+            .client
+            .get_success::<UpstreamsData>("/v1/stats/upstreams")
+            .await?;
+        Ok(response.data)
     }
 
     async fn fetch_user_link(&self, username: &str) -> Result<Option<String>, anyhow::Error> {

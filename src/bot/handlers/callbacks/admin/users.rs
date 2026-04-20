@@ -6,13 +6,13 @@ use crate::bot::handlers::actions::{
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
     admin_show_users_page, admin_show_users_page_by_group, send_user_qr_to_admin,
-    show_user_ban_confirm,
+    show_user_ban_confirm, show_user_rotate_secret_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
 use crate::bot::keyboards::bulk_selection_actions_keyboard;
 use teloxide::payloads::EditMessageTextSetters;
-use teloxide::prelude::{Bot, CallbackQuery, Requester};
+use teloxide::prelude::{Bot, CallbackQuery, ChatId, Requester};
 use teloxide::types::InputFile;
 
 pub async fn handle(
@@ -234,6 +234,58 @@ pub async fn handle(
             if let Some((chat_id, message_id)) = callback_message_target(q) {
                 bot.send_message(chat_id, status_text).await?;
                 admin_show_users_page(bot, chat_id, state, page, Some(message_id)).await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::ConfirmUserRotateSecret { tg_user_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            show_user_rotate_secret_confirm(bot, chat_id, message_id, tg_user_id).await?;
+            Ok(true)
+        }
+        CallbackAction::ExecuteUserRotateSecret { tg_user_id } => {
+            let Some(_) = require_admin_callback(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let user = match state.db.get_active_user_by_tg_user(tg_user_id).await? {
+                Some(u) => u,
+                None => {
+                    ack_callback(bot, q.id.clone(), Some("Пользователь не найден"), true).await?;
+                    return Ok(true);
+                }
+            };
+            let username = match user.telemt_username.as_deref() {
+                Some(u) => u,
+                None => {
+                    ack_callback(bot, q.id.clone(), Some("Telegram username не найден"), true).await?;
+                    return Ok(true);
+                }
+            };
+            let result = state.telemt_backend.rotate_secret(username).await;
+            let status_text = match result {
+                Ok(provisioned) => {
+                    if let Some(ref link) = provisioned.link {
+                        let chat_id = ChatId(tg_user_id);
+                        let msg = format!(
+                            "🔑 Ваш секрет обновлён!\n\nНовая ссылка:\n{}",
+                            link
+                        );
+                        let _ = bot.send_message(chat_id, msg).await;
+                        "✅ Секрет обновлён. Новая ссылка отправлена пользователю."
+                    } else {
+                        "✅ Секрет обновлён."
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Не удалось сменить секрет");
+                    return Ok(true);
+                }
+            };
+            ack_callback(bot, q.id.clone(), Some(status_text), false).await?;
+            if let Some((chat_id, message_id)) = callback_message_target(q) {
+                bot.send_message(chat_id, status_text).await?;
             }
             Ok(true)
         }

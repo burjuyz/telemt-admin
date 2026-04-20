@@ -26,7 +26,8 @@ use legacy::LegacyTelemtBackend;
 pub use types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionTopUser,
     TelemtConnectionsSummary, TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot,
-    TelemtStatsSummary, TelemtUserInfo, TelemtUserPatch,
+    TelemtStatsSummary, TelemtUpstream, TelemtUpstreamDc, TelemtUpstreamsSummary, TelemtUserInfo,
+    TelemtUserPatch,
 };
 
 #[derive(Clone)]
@@ -167,6 +168,81 @@ impl TelemtBackend {
                     Ok(None)
                 }
             },
+        }
+    }
+
+    pub async fn rotate_secret(
+        &self,
+        username: &str,
+    ) -> Result<ProvisionedUser, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Err(anyhow!(
+                "Ротация секрета доступна только через telemt control API"
+            )),
+            TelemtBackendInner::Api(api) => api.rotate_secret(username).await,
+        }
+    }
+
+    pub async fn upstreams_summary(
+        &self,
+    ) -> Result<Option<TelemtUpstreamsSummary>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(None),
+            TelemtBackendInner::Api(api) => {
+                let data = api.upstreams_summary().await?;
+                if !data.enabled {
+                    anyhow::bail!("Upstreams endpoint отклющён в настройках telemt");
+                }
+                let summary = match data.summary {
+                    Some(s) => s,
+                    None => return Ok(None),
+                };
+                let upstreams = data
+                    .upstreams
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|u| {
+                        let dc_list = u
+                            .dc
+                            .into_iter()
+                            .map(|d| TelemtUpstreamDc {
+                                dc: d.dc,
+                                latency_ms: d.latency_ema_ms,
+                                healthy: d.latency_ema_ms.is_some(),
+                            })
+                            .collect();
+                        TelemtUpstream {
+                            route_kind: u.route_kind,
+                            healthy: u.healthy,
+                            last_check_age_secs: u.last_check_age_secs,
+                            dc_list,
+                        }
+                    })
+                    .collect();
+                let route_kinds = {
+                    let mut kinds = Vec::new();
+                    if summary.direct_total > 0 {
+                        kinds.push(format!("Direct:{}", summary.direct_total));
+                    }
+                    if summary.socks5_total > 0 {
+                        kinds.push(format!("Socks5:{}", summary.socks5_total));
+                    }
+                    if summary.shadowsocks_total > 0 {
+                        kinds.push(format!("Shadowsocks:{}", summary.shadowsocks_total));
+                    }
+                    if summary.socks4_total > 0 {
+                        kinds.push(format!("Socks4:{}", summary.socks4_total));
+                    }
+                    kinds.join(" | ")
+                };
+                Ok(Some(TelemtUpstreamsSummary {
+                    healthy_total: summary.healthy_total,
+                    configured_total: summary.configured_total,
+                    unhealthy_total: summary.unhealthy_total,
+                    route_kinds,
+                    upstreams,
+                }))
+            }
         }
     }
 }

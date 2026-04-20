@@ -103,6 +103,30 @@ pub struct TelemtConnectionsSummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct TelemtUpstreamDc {
+    pub dc: u64,
+    pub latency_ms: Option<f64>,
+    pub healthy: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtUpstream {
+    pub route_kind: String,
+    pub healthy: bool,
+    pub last_check_age_secs: u64,
+    pub dc_list: Vec<TelemtUpstreamDc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TelemtUpstreamsSummary {
+    pub healthy_total: u64,
+    pub configured_total: u64,
+    pub unhealthy_total: u64,
+    pub route_kinds: String,
+    pub upstreams: Vec<TelemtUpstream>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TelemtMonitorSnapshot {
     pub health_status: String,
     pub accepting_new_connections: Option<bool>,

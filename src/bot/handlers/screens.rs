@@ -757,6 +757,27 @@ pub async fn show_user_ban_confirm(
     Ok(())
 }
 
+pub async fn show_user_rotate_secret_confirm(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: MessageId,
+    tg_user_id: i64,
+) -> HandlerResult {
+    bot.edit_message_text(
+        chat_id,
+        message_id,
+        format!(
+            "🔑 Сменить секрет пользователю {}?\n\nСтарая ссылка перестанет работать!",
+            tg_user_id
+        ),
+    )
+    .reply_markup(crate::bot::keyboards::confirm_user_rotate_secret_keyboard(
+        tg_user_id,
+    ))
+    .await?;
+    Ok(())
+}
+
 pub async fn admin_show_users_page(
     bot: &Bot,
     chat_id: ChatId,
@@ -1208,6 +1229,26 @@ pub async fn admin_show_connections_summary_screen(
         message_id,
         render_connections_summary_text(summary.as_ref(), summary_error.as_deref()),
         crate::bot::keyboards::connections_summary_keyboard(),
+    )
+    .await
+}
+
+pub async fn admin_show_upstreams_summary_screen(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    summary: Option<crate::telemt_backend::TelemtUpstreamsSummary>,
+    summary_error: Option<String>,
+) -> HandlerResult {
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        crate::bot::handlers::format::render_upstreams_summary_text(
+            summary.as_ref(),
+            summary_error.as_deref(),
+        ),
+        crate::bot::keyboards::upstreams_summary_keyboard(),
     )
     .await
 }

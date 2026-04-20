@@ -628,6 +628,10 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
             ),
         ])
         .append_row(vec![InlineKeyboardButton::callback(
+            "🔑 Сменить секрет",
+            CallbackAction::ConfirmUserRotateSecret { tg_user_id }.encode(),
+        )])
+        .append_row(vec![InlineKeyboardButton::callback(
             "⛔ Удалить пользователя",
             CallbackAction::ConfirmUserBan { tg_user_id, page }.encode(),
         )])
@@ -658,6 +662,11 @@ pub fn service_control_buttons(caps: &RuntimeCapabilities) -> InlineKeyboardMark
     rows.push(vec![InlineKeyboardButton::callback(
         "📈 Top пользователей",
         CallbackAction::ShowConnectionsSummary.encode(),
+    )]);
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "📡 Upstreams",
+        CallbackAction::ShowUpstreamsSummary.encode(),
     )]);
 
     if caps.can_restart || caps.can_stop {
@@ -984,6 +993,19 @@ pub fn connections_summary_keyboard() -> InlineKeyboardMarkup {
     ])
 }
 
+pub fn upstreams_summary_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "🔄 Обновить",
+            CallbackAction::ShowUpstreamsSummary.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::ShowServicePanel.encode(),
+        ),
+    ]])
+}
+
 pub fn cancel_keyboard(back_action: CallbackAction) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![vec![
         InlineKeyboardButton::callback("⬅️ Назад", back_action.encode()),
@@ -1010,6 +1032,23 @@ pub fn confirm_user_ban_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMa
         InlineKeyboardButton::callback(
             "⬅️ Назад",
             CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
+        ),
+    ]])
+}
+
+pub fn confirm_user_rotate_secret_keyboard(tg_user_id: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback(
+            "✅ Подтвердить",
+            CallbackAction::ExecuteUserRotateSecret { tg_user_id }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "⬅️ Назад",
+            CallbackAction::OpenUserCard {
+                tg_user_id,
+                page: 1,
+            }
+            .encode(),
         ),
     ]])
 }

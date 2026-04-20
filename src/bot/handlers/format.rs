@@ -179,130 +179,86 @@ pub fn render_user_card_text(
     user: &RegistrationRequest,
     runtime_info: Option<&TelemtUserInfo>,
 ) -> String {
-    let username = user
-        .tg_username
-        .as_deref()
-        .map(|u| format!("@{}", u))
-        .unwrap_or_else(|| "—".to_string());
-    let telemt = user.telemt_username.as_deref().unwrap_or("—");
-    let backend_mode = user.backend_mode.as_deref().unwrap_or("—");
+    let display_name = user_display_name(user);
+    let status = user.status.as_str();
+    let tg_user_id = user.tg_user_id;
+
+    let current_connections = runtime_info
+        .and_then(|info| info.current_connections)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    let active_unique_ips = runtime_info
+        .and_then(|info| info.active_unique_ips)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    let recent_unique_ips = runtime_info
+        .and_then(|info| info.recent_unique_ips)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    let total_octets = runtime_info
+        .map(|info| format_optional_bytes(info.total_octets))
+        .unwrap_or_else(|| "0 B".to_string());
+
+    let max_tcp = runtime_info
+        .and_then(|info| info.max_tcp_conns)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "∞".to_string());
+    let max_ips = runtime_info
+        .and_then(|info| info.max_unique_ips)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "∞".to_string());
+    let quota = runtime_info
+        .map(|info| format_optional_bytes(info.data_quota_bytes))
+        .unwrap_or_else(|| "∞".to_string());
+
+    let expiration = runtime_info
+        .and_then(|info| info.expiration_rfc3339.as_deref())
+        .unwrap_or("Не задано");
+
+    let username = user.telemt_username.as_deref().unwrap_or("—");
+
     let last_sync = user
         .last_synced_at
         .map(format_timestamp)
         .unwrap_or_else(|| "—".to_string());
-    let last_revision = user
-        .last_seen_revision
-        .as_deref()
-        .map(|value| {
-            if value.chars().count() > 24 {
-                format!("{}...", value.chars().take(21).collect::<String>())
-            } else {
-                value.to_string()
-            }
-        })
-        .unwrap_or_else(|| "—".to_string());
-    let sync_error = user.last_sync_error.as_deref().unwrap_or("нет");
-    let runtime_source = runtime_info
-        .map(|info| info.source.as_str())
-        .unwrap_or("нет данных");
-    let current_connections = runtime_info
-        .and_then(|info| info.current_connections)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "—".to_string());
-    let active_unique_ips = runtime_info
-        .and_then(|info| info.active_unique_ips)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "—".to_string());
-    let recent_unique_ips = runtime_info
-        .and_then(|info| info.recent_unique_ips)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "—".to_string());
-    let active_ip_list = runtime_info
-        .map(|info| format_ip_list(&info.active_unique_ips_list))
-        .unwrap_or_else(|| "—".to_string());
-    let recent_ip_list = runtime_info
-        .map(|info| format_ip_list(&info.recent_unique_ips_list))
-        .unwrap_or_else(|| "—".to_string());
-    let total_octets = runtime_info
-        .map(|info| format_optional_bytes(info.total_octets))
-        .unwrap_or_else(|| "—".to_string());
-    let user_ad_tag = runtime_info
-        .and_then(|info| info.user_ad_tag.as_deref())
-        .unwrap_or("—");
-    let max_tcp_conns = runtime_info
-        .map(|info| format_optional_usize(info.max_tcp_conns))
-        .unwrap_or_else(|| "—".to_string());
-    let data_quota = runtime_info
-        .map(|info| format_optional_bytes(info.data_quota_bytes))
-        .unwrap_or_else(|| "—".to_string());
-    let max_unique_ips = runtime_info
-        .map(|info| format_optional_usize(info.max_unique_ips))
-        .unwrap_or_else(|| "—".to_string());
-    let expiration = runtime_info
-        .and_then(|info| info.expiration_rfc3339.as_deref())
-        .unwrap_or("—");
-    let links_count = runtime_info
-        .map(|info| info.links.len().to_string())
-        .unwrap_or_else(|| "0".to_string());
-    let runtime_alerts = render_runtime_alerts(runtime_info);
-    let invite_token_id = user
-        .invite_token_id
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "—".to_string());
 
-    format!(
-        "👤 {}\n\n\
-         🆔 {}\n\
-         📱 {}\n\
-         📋 статус: {}\n\
-         🎟 ID ссылки (invite): {}\n\
-         🔗 telemt: {}\n\
-         🧩 backend: {}\n\
-         🔁 sync: {}\n\
-         🪪 revision: {}\n\
-         ⚠️ sync error: {}\n\
-         \n\
-         📡 runtime source: {}\n\
-         🔌 live connections: {}\n\
-         🌐 active unique IPs: {}\n\
-         🕘 recent unique IPs: {}\n\
-         📋 active IP list: {}\n\
-         📋 recent IP list: {}\n\
-         📦 traffic: {}\n\
-         🏷 ad tag: {}\n\
-         🛡 max TCP: {}\n\
-         🧮 quota: {}\n\
-         🌍 max unique IPs: {}\n\
-         🚨 anomalies: {}\n\
-         ⏳ expires: {}\n\
-         🔗 links: {}\n\
-         📅 {}",
-        user_display_name(user),
-        user.tg_user_id,
-        username,
-        user.status,
-        invite_token_id,
-        telemt,
-        backend_mode,
-        last_sync,
-        last_revision,
-        sync_error,
-        runtime_source,
-        current_connections,
-        active_unique_ips,
-        recent_unique_ips,
-        active_ip_list,
-        recent_ip_list,
-        total_octets,
-        user_ad_tag,
-        max_tcp_conns,
-        data_quota,
-        max_unique_ips,
-        runtime_alerts,
-        expiration,
-        links_count,
-        format_timestamp(user.created_at),
-    )
+    let mut lines = vec![
+        format!("👤 {}\n", display_name),
+        format!("🆔 {} | 📋 {}\n", tg_user_id, status),
+        format!(
+            "📡 ● {} соединений | 🌐 {} active IP | 🕘 {} recent IP\n",
+            current_connections, active_unique_ips, recent_unique_ips
+        ),
+        format!("📦 {} трафика\n", total_octets),
+        String::new(),
+        format!(
+            "🛡 TCP: {} | 🌍 IP: {} | 🧮 Квота: {}\n",
+            max_tcp, max_ips, quota
+        ),
+    ];
+
+    if let Some(info) = runtime_info {
+        let mut warnings = Vec::new();
+        if let (Some(cur), Some(limit)) = (info.current_connections, info.max_tcp_conns)
+            && cur > limit as u64
+        {
+            warnings.push(format!("TCP: {}/{} (превышен!)", cur, limit));
+        }
+        if let (Some(cur), Some(limit)) = (info.active_unique_ips, info.max_unique_ips)
+            && cur > limit
+        {
+            warnings.push(format!("IP: {}/{} (превышен!)", cur, limit));
+        }
+        if !warnings.is_empty() {
+            lines.push(format!("⚠️ {}\n", warnings.join(", ")));
+        }
+    }
+
+    lines.push(format!("⏳ {}\n", expiration));
+    lines.push(format!("🔗 {}\n", username));
+    lines.push(format!("⏱ synced {}", last_sync));
+
+    lines.join("")
 }
 
 pub fn usage_guide_text() -> &'static str {
@@ -435,5 +391,58 @@ mod tests {
 
         assert!(text.contains("/start"));
         assert!(text.contains("Моя ссылка"));
+    }
+}
+
+pub fn render_upstreams_summary_text(
+    summary: Option<&crate::telemt_backend::TelemtUpstreamsSummary>,
+    error: Option<&str>,
+) -> String {
+    match summary {
+        Some(summary) => {
+            let mut lines = vec![
+                "📡 Upstreams".to_string(),
+                String::new(),
+                format!(
+                    "✅ {}/{} healthy | {}",
+                    summary.healthy_total, summary.configured_total, summary.route_kinds
+                ),
+                String::new(),
+            ];
+
+            for upstream in &summary.upstreams {
+                let dc_parts: Vec<String> = upstream
+                    .dc_list
+                    .iter()
+                    .map(|dc| {
+                        let status = if dc.latency_ms.is_some() { "✅" } else { "❌" };
+                        let latency = dc
+                            .latency_ms
+                            .map(|ms| format!("{:.0}ms", ms))
+                            .unwrap_or_else(|| "—".to_string());
+                        format!("DC{}: {} {}", dc.dc, status, latency)
+                    })
+                    .collect();
+                lines.push(format!("🌐 {}", dc_parts.join(" | ")));
+            }
+
+            if let Some(first_upstream) = summary.upstreams.first() {
+                lines.push(String::new());
+                lines.push(format!(
+                    "⏱ Последняя проверка: {} сек назад",
+                    first_upstream.last_check_age_secs
+                ));
+            }
+
+            lines.join("\n")
+        }
+        None => {
+            let mut text = "📡 Upstreams\n\nФункция отключена или недоступна в telemt.".to_string();
+            if let Some(err) = error {
+                text.push_str("\n\nПричина: ");
+                text.push_str(err);
+            }
+            text
+        }
     }
 }
