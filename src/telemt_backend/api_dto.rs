@@ -28,6 +28,8 @@ pub(crate) struct CreateUserRequest<'a> {
     pub(crate) max_unique_ips: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) data_quota_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) group_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

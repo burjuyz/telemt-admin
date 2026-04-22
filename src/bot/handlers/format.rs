@@ -48,7 +48,7 @@ pub fn render_invite_token_button_title(token: &InviteToken) -> String {
     )
 }
 
-pub fn render_invite_token_card_text(token: &InviteToken) -> String {
+pub fn render_invite_token_card_text(token: &crate::db::InviteToken, group_name: Option<&str>) -> String {
     let mode = if token.auto_approve { "AUTO" } else { "MANUAL" };
     let usage = token
         .max_usage
@@ -63,14 +63,14 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
     let limits_text = {
         let mut parts = Vec::new();
         if let Some(days) = token.default_expiration_days {
-            parts.push(format!("доступ {} дн.", days));
+            parts.push(format!("срок {} дн.", days));
         }
         if let Some(ips) = token.default_max_unique_ips {
             parts.push(format!("IP: {}", ips));
         }
         if let Some(quota) = token.default_data_quota_bytes {
             let gb = quota as f64 / 1_073_741_824.0;
-            parts.push(format!("{:.1} GB", gb));
+            parts.push(format!(" quota {:.1} GB", gb));
         }
         if parts.is_empty() {
             "по умолчанию".to_string()
@@ -79,6 +79,10 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
         }
     };
 
+    let group_line = group_name
+        .map(|name| format!("\n📁 Группа: {}", name))
+        .unwrap_or_default();
+
     format!(
         "🎟 Invite-токен\n\n\
          🔑 {}\n\
@@ -86,7 +90,7 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
          ⏳ Срок действия ссылки (invite): до {}\n\
          📊 Активаций по ссылке: {}\n\
          👤 {}\n\
-         📅 создан {}\n\n\
+         📅 создан {}{}\n\n\
          📈 Лимиты пользователя: {}",
         token.token,
         mode,
@@ -94,6 +98,7 @@ pub fn render_invite_token_card_text(token: &InviteToken) -> String {
         usage,
         created_by,
         format_date(token.created_at),
+        group_line,
         limits_text,
     )
 }

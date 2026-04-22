@@ -168,6 +168,10 @@ pub enum CallbackAction {
         group_id: i64,
         page: i64,
     },
+    PromptEditTokenLimits {
+        token_id: i64,
+        page: i64,
+    },
     SendTokenStartLink {
         token_id: i64,
     },
@@ -339,6 +343,9 @@ impl CallbackAction {
             }
             Self::ExecuteEditTokenGroup { token_id, group_id, page } => {
                 format!("v1|admin|token|edit|group|execute|{token_id}|{group_id}|{page}")
+            }
+            Self::PromptEditTokenLimits { token_id, page } => {
+                format!("v1|admin|token|edit|limits|{token_id}|{page}")
             }
             Self::SendTokenStartLink { token_id } => {
                 format!("v1|admin|token|startlink|{token_id}")
@@ -570,6 +577,12 @@ impl CallbackAction {
                 Some(Self::ExecuteEditTokenGroup {
                     token_id: parse_i64(token_id)?,
                     group_id: parse_i64(group_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            ["v1", "admin", "token", "edit", "limits", token_id, page] => {
+                Some(Self::PromptEditTokenLimits {
+                    token_id: parse_i64(token_id)?,
                     page: parse_i64(page)?.max(1),
                 })
             }

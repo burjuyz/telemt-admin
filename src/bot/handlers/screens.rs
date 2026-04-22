@@ -609,14 +609,21 @@ pub async fn show_token_card(
     bot: &Bot,
     chat_id: ChatId,
     message_id: Option<MessageId>,
+    state: &BotState,
     token: &crate::db::InviteToken,
     page: i64,
 ) -> HandlerResult {
+    let group_name = if let Some(group_id) = token.default_group_id {
+        state.db.get_user_group_by_id(group_id).await?
+            .map(|g| g.name)
+    } else {
+        None
+    };
     upsert_screen(
         bot,
         chat_id,
         message_id,
-        render_invite_token_card_text(token),
+        render_invite_token_card_text(token, group_name.as_deref()),
         crate::bot::keyboards::token_card_keyboard(token.id, page),
     )
     .await

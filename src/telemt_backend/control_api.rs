@@ -57,6 +57,7 @@ impl ApiTelemtBackend {
         expiration_days: Option<i32>,
         max_unique_ips: Option<i32>,
         data_quota_bytes: Option<i64>,
+        group_id: Option<i64>,
     ) -> Result<ProvisionedUser, anyhow::Error> {
         let expiration = expiration_days.map(|days| {
             let now = std::time::SystemTime::now()
@@ -75,6 +76,7 @@ impl ApiTelemtBackend {
             expiration,
             max_unique_ips: max_unique_ips.map(|v| v as usize),
             data_quota_bytes: data_quota_bytes.map(|v| v as u64),
+            group_id,
         };
         let response = self
             .client

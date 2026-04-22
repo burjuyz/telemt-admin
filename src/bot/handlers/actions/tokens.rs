@@ -53,7 +53,7 @@ pub async fn open_token_from_lookup_input(
         return Ok(false);
     };
 
-    show_token_card(bot, chat_id, None, &token, page).await?;
+    show_token_card(bot, chat_id, None, state, &token, page).await?;
     Ok(true)
 }
 

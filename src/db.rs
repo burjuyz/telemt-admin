@@ -109,6 +109,7 @@ pub struct ConsumedInviteToken {
     pub default_expiration_days: Option<i32>,
     pub default_max_unique_ips: Option<i32>,
     pub default_data_quota_bytes: Option<i64>,
+    pub default_group_id: Option<i64>,
 }
 
 #[derive(Debug, Error)]

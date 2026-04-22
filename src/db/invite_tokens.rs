@@ -182,6 +182,30 @@ impl Db {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn update_invite_token_limits(
+        &self,
+        token_id: i64,
+        default_expiration_days: Option<i32>,
+        default_max_unique_ips: Option<i32>,
+        default_data_quota_bytes: Option<i64>,
+    ) -> Result<bool, anyhow::Error> {
+        let result = sqlx::query(
+            "UPDATE invite_tokens
+             SET default_expiration_days = ?,
+                 default_max_unique_ips = ?,
+                 default_data_quota_bytes = ?
+             WHERE id = ?
+               AND is_active = 1",
+        )
+        .bind(default_expiration_days)
+        .bind(default_max_unique_ips)
+        .bind(default_data_quota_bytes)
+        .bind(token_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn consume_invite_token(
         &self,
         token: &str,
@@ -267,6 +291,7 @@ impl Db {
             default_expiration_days: row.default_expiration_days,
             default_max_unique_ips: row.default_max_unique_ips,
             default_data_quota_bytes: row.default_data_quota_bytes,
+            default_group_id: row.default_group_id,
         })
     }
 

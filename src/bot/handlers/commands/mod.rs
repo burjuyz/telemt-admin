@@ -236,7 +236,7 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
                 }
                 clear_wizard_state(&state, user_id).await?;
                 if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
-                    show_token_card(&bot, msg.chat.id, None, &token, 1).await?;
+                    show_token_card(&bot, msg.chat.id, None, &state, &token, 1).await?;
                 } else {
                     bot.send_message(msg.chat.id, "Токен не найден или уже недоступен.")
                         .await?;

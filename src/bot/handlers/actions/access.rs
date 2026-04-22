@@ -261,19 +261,20 @@ pub async fn approve_request_and_build_link(
         None => return Ok(None),
     };
 
-    let (expiration_days, max_unique_ips, data_quota_bytes) =
+    let (expiration_days, max_unique_ips, data_quota_bytes, group_id) =
         if let Some(token_id) = request.invite_token_id {
             if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
                 (
                     token.default_expiration_days,
                     token.default_max_unique_ips,
                     token.default_data_quota_bytes,
+                    token.default_group_id,
                 )
             } else {
-                (None, None, None)
+                (None, None, None, None)
             }
         } else {
-            (None, None, None)
+            (None, None, None, None)
         };
 
     let telemt_user = telemt_username(request.tg_user_id);
@@ -286,6 +287,7 @@ pub async fn approve_request_and_build_link(
             expiration_days,
             max_unique_ips,
             data_quota_bytes,
+            group_id,
         )
         .await?;
     if state
@@ -320,6 +322,7 @@ pub async fn approve_user_direct_and_build_link(
     expiration_days: Option<i32>,
     max_unique_ips: Option<i32>,
     data_quota_bytes: Option<i64>,
+    group_id: Option<i64>,
 ) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     let secret = generate_user_secret();
@@ -331,6 +334,7 @@ pub async fn approve_user_direct_and_build_link(
             expiration_days,
             max_unique_ips,
             data_quota_bytes,
+            group_id,
         )
         .await?;
     state
@@ -509,6 +513,7 @@ pub async fn process_invite_token(
                 consumed.default_expiration_days,
                 consumed.default_max_unique_ips,
                 consumed.default_data_quota_bytes,
+                consumed.default_group_id,
             )
             .await?;
             bot.send_message(

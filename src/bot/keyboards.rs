@@ -923,10 +923,16 @@ pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
                 CallbackAction::SendTokenStartLink { token_id }.encode(),
             ),
         ],
-        vec![InlineKeyboardButton::callback(
-            "📁 Группа",
-            CallbackAction::PromptEditTokenGroup { token_id, page }.encode(),
-        )],
+        vec![
+            InlineKeyboardButton::callback(
+                "📁 Группа",
+                CallbackAction::PromptEditTokenGroup { token_id, page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "📊 Лимиты",
+                CallbackAction::PromptEditTokenLimits { token_id, page }.encode(),
+            ),
+        ],
         vec![InlineKeyboardButton::callback(
             "🗑 Отозвать токен",
             CallbackAction::ConfirmTokenRevoke { token_id, page }.encode(),
@@ -1100,6 +1106,41 @@ pub fn token_edit_group_picker_keyboard(token_id: i64, page: i64, groups: &[crat
         "🚫 Убрать группу",
         CallbackAction::ExecuteEditTokenGroup { token_id, group_id: 0, page }.encode(),
     )]);
+
+    rows.push(vec![InlineKeyboardButton::callback(
+        "⬅️ Назад к токену",
+        CallbackAction::OpenTokenCard { token_id, page }.encode(),
+    )]);
+
+    InlineKeyboardMarkup::new(rows)
+}
+
+pub fn token_edit_limits_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    rows.push(vec![
+        InlineKeyboardButton::callback(
+            "30 дн.",
+            CallbackAction::SetTokenExpiration {
+                days: 30,
+                auto_approve: true,
+            }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "60 дн.",
+            CallbackAction::SetTokenExpiration {
+                days: 60,
+                auto_approve: true,
+            }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "180 дн.",
+            CallbackAction::SetTokenExpiration {
+                days: 180,
+                auto_approve: true,
+            }.encode(),
+        ),
+    ]);
 
     rows.push(vec![InlineKeyboardButton::callback(
         "⬅️ Назад к токену",

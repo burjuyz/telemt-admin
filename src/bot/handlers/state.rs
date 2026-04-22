@@ -51,6 +51,11 @@ pub enum WizardState {
         token_id: i64,
         page: i64,
     },
+    /// Waiting for new limits (expiration, ips, quota) for an existing token.
+    AdminEditTokenLimits {
+        token_id: i64,
+        page: i64,
+    },
     /// Ожидание текста рассылки всем approved-пользователям.
     AdminBroadcastAwaitingMessage,
     /// Название новой группы пользователей.

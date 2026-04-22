@@ -71,6 +71,7 @@ impl TelemtBackend {
         expiration_days: Option<i32>,
         max_unique_ips: Option<i32>,
         data_quota_bytes: Option<i64>,
+        group_id: Option<i64>,
     ) -> Result<ProvisionedUser, anyhow::Error> {
         match self.inner.as_ref() {
             TelemtBackendInner::Legacy(legacy) => {
@@ -83,6 +84,7 @@ impl TelemtBackend {
                     expiration_days,
                     max_unique_ips,
                     data_quota_bytes,
+                    group_id,
                 )
                 .await
             }

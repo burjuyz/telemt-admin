@@ -45,17 +45,27 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::SetTokenExpiration { days, auto_approve } => {
-            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);
             };
-            ack_callback(bot, q.id.clone(), Some(&format!("Срок: {} дн.", days)), false).await?;
-            
+
+            let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
+            if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
+                let updated = state.db.update_invite_token_limits(token_id, Some(days), None, None).await?;
+                ack_callback(bot, q.id.clone(), Some(&format!("Срок: {} дн.", days)), false).await?;
+                if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+                    show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
+                }
+                crate::bot::handlers::state::clear_wizard_state(state, q.from.id.0 as i64).await?;
+                return Ok(true);
+            }
+
             let new_state = WizardState::AdminTokenAwaitingMaxIps {
                 auto_approve,
                 expiration_days: Some(days),
             };
-            replace_wizard_state(state, admin_id, new_state).await?;
-            
+            replace_wizard_state(state, q.from.id.0 as i64, new_state).await?;
+
             let keyboard = keyboards::token_max_ips_keyboard(auto_approve, days);
             bot.edit_message_text(
                 chat_id,
@@ -71,19 +81,32 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::SetTokenMaxIps { count, auto_approve, expiration_days } => {
-            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);
             };
+
+            let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
+            if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
+                let updated = state.db.update_invite_token_limits(token_id, None, count, None).await?;
+                let ip_text = count.map(|c| c.to_string()).unwrap_or_else(|| "без лимита".to_string());
+                ack_callback(bot, q.id.clone(), Some(&format!("IP: {}", ip_text)), false).await?;
+                if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+                    show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
+                }
+                crate::bot::handlers::state::clear_wizard_state(state, q.from.id.0 as i64).await?;
+                return Ok(true);
+            }
+
             let ip_text = count.map(|c| c.to_string()).unwrap_or_else(|| "без лимита".to_string());
             ack_callback(bot, q.id.clone(), Some(&format!("IP: {}", ip_text)), false).await?;
-            
+
             let new_state = WizardState::AdminTokenAwaitingDataQuota {
                 auto_approve,
                 expiration_days: Some(expiration_days),
                 max_unique_ips: count,
             };
-            replace_wizard_state(state, admin_id, new_state).await?;
-            
+            replace_wizard_state(state, q.from.id.0 as i64, new_state).await?;
+
             bot.edit_message_text(
                 chat_id,
                 message_id,
@@ -99,9 +122,27 @@ pub async fn handle(
             Ok(true)
         }
         CallbackAction::SetTokenDataQuota { quota_gb, auto_approve, expiration_days, max_unique_ips } => {
-            let Some((admin_id, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);
             };
+
+            let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
+            if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
+                let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
+                let updated = state.db.update_invite_token_limits(token_id, None, None, data_quota_bytes).await?;
+                let quota_text = match quota_gb {
+                    Some(0) => "безлимит".to_string(),
+                    Some(gb) => format!("{} GB", gb),
+                    None => "другое...".to_string(),
+                };
+                ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
+                if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
+                    show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
+                }
+                crate::bot::handlers::state::clear_wizard_state(state, q.from.id.0 as i64).await?;
+                return Ok(true);
+            }
+
             let quota_text = match quota_gb {
                 Some(0) => "безлимит".to_string(),
                 Some(gb) => format!("{} GB", gb),
@@ -116,7 +157,7 @@ pub async fn handle(
                 max_unique_ips,
                 data_quota_bytes,
             };
-            replace_wizard_state(state, admin_id, new_state).await?;
+            replace_wizard_state(state, q.from.id.0 as i64, new_state).await?;
 
             let groups = state.db.list_user_groups().await?;
 
@@ -272,7 +313,7 @@ pub async fn handle(
                 return Ok(true);
             };
             ack_callback(bot, q.id.clone(), Some("Открыта карточка токена"), false).await?;
-            show_token_card(bot, chat_id, Some(message_id), &token, page).await?;
+            show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
             Ok(true)
         }
         CallbackAction::PromptEditTokenGroup { token_id, page } => {
@@ -323,8 +364,23 @@ pub async fn handle(
 
             let token = state.db.get_active_invite_token_by_id(token_id).await?;
             if let Some(token) = token {
-                show_token_card(bot, chat_id, Some(message_id), &token, page).await?;
+                show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
             }
+            Ok(true)
+        }
+        CallbackAction::PromptEditTokenLimits { token_id, page } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            bot.edit_message_text(
+                chat_id,
+                message_id,
+                "Выберите новый срок доступа:",
+            )
+            .reply_markup(keyboards::token_edit_limits_keyboard(token_id, page))
+            .await?;
             Ok(true)
         }
         CallbackAction::SendTokenStartLink { token_id } => {
