@@ -51,7 +51,7 @@ pub async fn handle(
 
             let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
             if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
-                let updated = state.db.update_invite_token_limits(token_id, Some(days), None, None).await?;
+                let _updated = state.db.update_invite_token_limits(token_id, Some(days), None, None).await?;
                 ack_callback(bot, q.id.clone(), Some(&format!("Срок: {} дн.", days)), false).await?;
                 if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
                     show_token_card(bot, chat_id, Some(message_id), state, &token, page).await?;
@@ -87,7 +87,7 @@ pub async fn handle(
 
             let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
             if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
-                let updated = state.db.update_invite_token_limits(token_id, None, count, None).await?;
+                let _updated = state.db.update_invite_token_limits(token_id, None, count, None).await?;
                 let ip_text = count.map(|c| c.to_string()).unwrap_or_else(|| "без лимита".to_string());
                 ack_callback(bot, q.id.clone(), Some(&format!("IP: {}", ip_text)), false).await?;
                 if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
@@ -129,7 +129,7 @@ pub async fn handle(
             let wizard = crate::bot::handlers::state::wizard_state(state, q.from.id.0 as i64).await?;
             if let Some(WizardState::AdminEditTokenLimits { token_id, page }) = wizard {
                 let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
-                let updated = state.db.update_invite_token_limits(token_id, None, None, data_quota_bytes).await?;
+                let _updated = state.db.update_invite_token_limits(token_id, None, None, data_quota_bytes).await?;
                 let quota_text = match quota_gb {
                     Some(0) => "безлимит".to_string(),
                     Some(gb) => format!("{} GB", gb),

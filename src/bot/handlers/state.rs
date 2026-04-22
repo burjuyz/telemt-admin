@@ -143,6 +143,9 @@ impl WizardState {
             Self::AdminEditTokenGroup { token_id, page } => {
                 format!("admin_edit_token_group:{}:{}", token_id, page)
             }
+            Self::AdminEditTokenLimits { token_id, page } => {
+                format!("admin_edit_token_limits:{}:{}", token_id, page)
+            }
             Self::AdminBroadcastAwaitingMessage => "admin_broadcast_awaiting".to_string(),
             Self::AdminGroupAwaitingName => "admin_group_awaiting_name".to_string(),
             Self::AdminGroupExpiryAwaitingValue { group_id } => {
@@ -224,6 +227,12 @@ impl WizardState {
                     let token_id = parts.next()?.parse::<i64>().ok()?;
                     let page = parts.next()?.parse::<i64>().ok()?.max(1);
                     return Some(Self::AdminEditTokenGroup { token_id, page });
+                }
+                if let Some(value) = value.strip_prefix("admin_edit_token_limits:") {
+                    let mut parts = value.split(':');
+                    let token_id = parts.next()?.parse::<i64>().ok()?;
+                    let page = parts.next()?.parse::<i64>().ok()?.max(1);
+                    return Some(Self::AdminEditTokenLimits { token_id, page });
                 }
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {
