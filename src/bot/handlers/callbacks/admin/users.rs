@@ -123,6 +123,32 @@ pub async fn handle(
             admin_show_users_page_by_group(bot, chat_id, state, 1, 0, Some(message_id)).await?;
             Ok(true)
         }
+        CallbackAction::SelectAllVisibleUsers { page, filter_group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let users_page_size = state.config.users_page_size.max(1);
+            let offset = (page - 1) * users_page_size;
+            let user_ids = if let Some(gid) = filter_group_id {
+                state.db.list_users_in_group(gid, users_page_size, offset).await?
+            } else {
+                state.db.list_users_without_group(users_page_size, offset).await?
+            };
+            {
+                let mut selected = state.selected_users.lock().unwrap();
+                for uid in user_ids {
+                    selected.insert(uid);
+                }
+            }
+            let count = state.selected_users.lock().unwrap().len();
+            ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {}", count)), false).await?;
+            if let Some(gid) = filter_group_id {
+                admin_show_users_page_by_group(bot, chat_id, state, page, gid, Some(message_id)).await?;
+            } else {
+                admin_show_users_page_without_group(bot, chat_id, state, page, Some(message_id)).await?;
+            }
+            Ok(true)
+        }
         CallbackAction::ShowUserSelectionActions => {
             let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
                 return Ok(true);

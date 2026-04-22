@@ -280,6 +280,10 @@ pub enum CallbackAction {
     ClearUserSelection,
     ClearUserSelectionAndReturn,
     ShowUserSelectionActions,
+    SelectAllVisibleUsers {
+        page: i64,
+        filter_group_id: Option<i64>,
+    },
     BulkAssignGroup {
         group_id: i64,
     },
@@ -486,6 +490,12 @@ impl CallbackAction {
             Self::ClearUserSelection => "v1|admin|users|select|clear".to_string(),
             Self::ClearUserSelectionAndReturn => "v1|admin|users|select|clear|return".to_string(),
             Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
+            Self::SelectAllVisibleUsers { page, filter_group_id } => {
+                match filter_group_id {
+                    Some(gid) => format!("v1|admin|users|select|all|{}|p{}|filter|g|{}", page, page, gid),
+                    None => format!("v1|admin|users|select|all|{}|p{}", page, page),
+                }
+            }
             Self::BulkAssignGroup { group_id } => {
                 format!("v1|admin|users|bulk|group|{}", group_id)
             }
@@ -815,6 +825,19 @@ impl CallbackAction {
                 Some(Self::ClearUserSelectionAndReturn)
             }
             ["v1", "admin", "users", "select", "actions"] => Some(Self::ShowUserSelectionActions),
+            ["v1", "admin", "users", "select", "all", page, "filter", rest @ ..] => {
+                let (filter_group_id, _) = parse_optional_group_suffix(rest);
+                Some(Self::SelectAllVisibleUsers {
+                    page: parse_i64(page)?.max(1),
+                    filter_group_id,
+                })
+            }
+            ["v1", "admin", "users", "select", "all", page] => {
+                Some(Self::SelectAllVisibleUsers {
+                    page: parse_i64(page)?.max(1),
+                    filter_group_id: None,
+                })
+            }
             ["v1", "admin", "users", "select", tg_user_id, page] => {
                 Some(Self::ToggleUserSelection {
                     tg_user_id: parse_i64(tg_user_id)?,
@@ -858,6 +881,22 @@ impl CallbackAction {
 
 fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
+}
+
+fn parse_optional_group_suffix(parts: &[&str]) -> (Option<i64>, &str) {
+    let mut it = parts.iter();
+    while let Some(p) = it.next() {
+        if *p == "g" {
+            if let Some(group_id_str) = it.next() {
+                if let Ok(gid) = group_id_str.parse::<i64>() {
+                    let remaining: Vec<&str> = it.map(|s| *s).collect();
+                    let remaining_str = remaining.join(":");
+                    return (Some(gid), remaining_str.as_str());
+                }
+            }
+        }
+    }
+    (None, "")
 }
 
 #[cfg(test)]

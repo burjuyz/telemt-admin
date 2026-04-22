@@ -408,7 +408,11 @@ pub fn users_page_keyboard_empty(
     InlineKeyboardMarkup::new(vec![
         vec![InlineKeyboardButton::callback(
             "☑️ Выбрать все",
-            CallbackAction::ShowUserSelectionActions.encode(),
+            CallbackAction::SelectAllVisibleUsers {
+                page: 1,
+                filter_group_id: _filter_group_id,
+            }
+            .encode(),
         )],
         vec![InlineKeyboardButton::callback(
             "❌ Очистить",
