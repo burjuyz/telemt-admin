@@ -601,6 +601,18 @@ impl CallbackAction {
                     expiration_days: parse_i64(expiration_days)? as i32,
                 })
 }
+            ["v1", "admin", "token", "quota", "direct", token_id, quota, page] => {
+                let quota_gb = if *quota == "none" {
+                    None
+                } else {
+                    Some(parse_i64(quota)?)
+                };
+                Some(Self::SetTokenDataQuotaDirect {
+                    token_id: parse_i64(token_id)?,
+                    quota_gb,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "token", "quota", expiration_days, auto_approve, ips, quota] => {
                 let max_ips = if *ips == "none" {
                     None
@@ -676,18 +688,6 @@ impl CallbackAction {
                 Some(Self::SetTokenMaxIpsDirect {
                     token_id: parse_i64(token_id)?,
                     count: max_ips,
-                    page: parse_i64(page)?.max(1),
-                })
-            }
-            ["v1", "admin", "token", "quota", "direct", token_id, quota, page] => {
-                let quota_gb = if *quota == "none" {
-                    None
-                } else {
-                    Some(parse_i64(quota)?)
-                };
-                Some(Self::SetTokenDataQuotaDirect {
-                    token_id: parse_i64(token_id)?,
-                    quota_gb,
                     page: parse_i64(page)?.max(1),
                 })
             }

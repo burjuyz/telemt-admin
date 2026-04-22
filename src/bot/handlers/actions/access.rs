@@ -269,12 +269,12 @@ pub async fn approve_request_and_build_link(
                 let mut quota = token.default_data_quota_bytes;
                 let gid = token.default_group_id;
 
-                if let Some(gid) = gid {
-                    if let Some(group) = state.db.get_user_group_by_id(gid).await? {
-                        exp = exp.or(group.default_expiration_days);
-                        ips = ips.or(group.default_max_unique_ips);
-                        quota = quota.or(group.default_data_quota_bytes);
-                    }
+                if let Some(gid) = gid
+                    && let Some(group) = state.db.get_user_group_by_id(gid).await?
+                {
+                    exp = exp.or(group.default_expiration_days);
+                    ips = ips.or(group.default_max_unique_ips);
+                    quota = quota.or(group.default_data_quota_bytes);
                 }
 
                 (exp, ips, quota, gid)
