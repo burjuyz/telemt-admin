@@ -261,6 +261,86 @@ pub async fn handle(
                 .await?;
             Ok(true)
         }
+        CallbackAction::SetGroupExpirationDirect { group_id, days } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let _updated = state.db.update_user_group_limits(group_id, Some(days), None, None).await?;
+            ack_callback(bot, q.id.clone(), Some(&format!("Срок: {} дн.", days)), false).await?;
+            if let Some(group) = state.db.get_user_group_by_id(group_id).await? {
+                crate::bot::handlers::screens::admin_show_group_card(
+                    bot, chat_id, Some(message_id), state, &group,
+                )
+                .await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::SetGroupMaxIpsDirect { group_id, count } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let _updated = state.db.update_user_group_limits(group_id, None, count, None).await?;
+            let ip_text = count.map(|c| c.to_string()).unwrap_or_else(|| "без лимита".to_string());
+            ack_callback(bot, q.id.clone(), Some(&format!("IP: {}", ip_text)), false).await?;
+            if let Some(group) = state.db.get_user_group_by_id(group_id).await? {
+                crate::bot::handlers::screens::admin_show_group_card(
+                    bot, chat_id, Some(message_id), state, &group,
+                )
+                .await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::SetGroupDataQuotaDirect { group_id, quota_gb } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            let data_quota_bytes = quota_gb.map(|gb| gb * 1024 * 1024 * 1024);
+            let _updated = state.db.update_user_group_limits(group_id, None, None, data_quota_bytes).await?;
+            let quota_text = quota_gb.map(|gb| format!("{} GB", gb)).unwrap_or_else(|| "безлимит".to_string());
+            ack_callback(bot, q.id.clone(), Some(&format!("Квота: {}", quota_text)), false).await?;
+            if let Some(group) = state.db.get_user_group_by_id(group_id).await? {
+                crate::bot::handlers::screens::admin_show_group_card(
+                    bot, chat_id, Some(message_id), state, &group,
+                )
+                .await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::ApplyGroupLimits { group_id } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            if !state.config.telemt_api.enabled {
+                ack_callback(bot, q.id.clone(), Some("Нужен telemt control API"), true).await?;
+                return Ok(true);
+            }
+            let Some(group) = state.db.get_user_group_by_id(group_id).await? else {
+                ack_callback(bot, q.id.clone(), Some("Группа не найдена"), true).await?;
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            let (ok, err) = match crate::bot::handlers::actions::groups::apply_group_limits_to_members(state, &group).await {
+                Ok(v) => v,
+                Err(error) => {
+                    bot.edit_message_text(
+                        chat_id,
+                        message_id,
+                        format!("Не удалось применить лимиты: {}", error),
+                    )
+                    .reply_markup(crate::bot::keyboards::group_card_keyboard(group.id))
+                    .await?;
+                    return Ok(true);
+                }
+            };
+            let text = format!(
+                "Лимиты применены через PATCH.\nУспешно: {}\nОшибок: {}",
+                ok, err
+            );
+            bot.edit_message_text(chat_id, message_id, text)
+                .reply_markup(crate::bot::keyboards::group_card_keyboard(group.id))
+                .await?;
+            Ok(true)
+        }
         _ => Ok(false),
     }
 }

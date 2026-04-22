@@ -56,6 +56,10 @@ pub enum WizardState {
         token_id: i64,
         page: i64,
     },
+    /// Waiting for new limits for an existing group (cancel on text input).
+    AdminEditGroupLimits {
+        group_id: i64,
+    },
     /// Ожидание текста рассылки всем approved-пользователям.
     AdminBroadcastAwaitingMessage,
     /// Название новой группы пользователей.
@@ -146,6 +150,9 @@ impl WizardState {
             Self::AdminEditTokenLimits { token_id, page } => {
                 format!("admin_edit_token_limits:{}:{}", token_id, page)
             }
+            Self::AdminEditGroupLimits { group_id } => {
+                format!("admin_edit_group_limits:{}", group_id)
+            }
             Self::AdminBroadcastAwaitingMessage => "admin_broadcast_awaiting".to_string(),
             Self::AdminGroupAwaitingName => "admin_group_awaiting_name".to_string(),
             Self::AdminGroupExpiryAwaitingValue { group_id } => {
@@ -233,6 +240,11 @@ impl WizardState {
                     let token_id = parts.next()?.parse::<i64>().ok()?;
                     let page = parts.next()?.parse::<i64>().ok()?.max(1);
                     return Some(Self::AdminEditTokenLimits { token_id, page });
+                }
+                if let Some(value) = value.strip_prefix("admin_edit_group_limits:") {
+                    return Some(Self::AdminEditGroupLimits {
+                        group_id: value.parse::<i64>().ok()?,
+                    });
                 }
                 if let Some(value) = value.strip_prefix("admin_find_user:") {
                     return Some(Self::AdminFindUserAwaitingTarget {

@@ -185,6 +185,52 @@ pub fn group_card_keyboard(group_id: i64) -> InlineKeyboardMarkup {
                 CallbackAction::ClearGroupExpiry { group_id }.encode(),
             ),
         ],
+        vec![
+            InlineKeyboardButton::callback(
+                "⏳ 30 дн.",
+                CallbackAction::SetGroupExpirationDirect { group_id, days: 30 }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏳ 60 дн.",
+                CallbackAction::SetGroupExpirationDirect { group_id, days: 60 }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏳ 180 дн.",
+                CallbackAction::SetGroupExpirationDirect { group_id, days: 180 }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "🌐 2 IP",
+                CallbackAction::SetGroupMaxIpsDirect { group_id, count: Some(2) }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🌐 3 IP",
+                CallbackAction::SetGroupMaxIpsDirect { group_id, count: Some(3) }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🌐 5 IP",
+                CallbackAction::SetGroupMaxIpsDirect { group_id, count: Some(5) }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "💾 5 GB",
+                CallbackAction::SetGroupDataQuotaDirect { group_id, quota_gb: Some(5) }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "💾 10 GB",
+                CallbackAction::SetGroupDataQuotaDirect { group_id, quota_gb: Some(10) }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "💾 50 GB",
+                CallbackAction::SetGroupDataQuotaDirect { group_id, quota_gb: Some(50) }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "✅ Применить лимиты",
+            CallbackAction::ApplyGroupLimits { group_id }.encode(),
+        )],
         vec![InlineKeyboardButton::callback(
             "⛔ Отключить всех",
             CallbackAction::GroupDeactivateAll { group_id }.encode(),
@@ -929,8 +975,50 @@ pub fn token_card_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
                 CallbackAction::PromptEditTokenGroup { token_id, page }.encode(),
             ),
             InlineKeyboardButton::callback(
-                "📊 Лимиты",
-                CallbackAction::PromptEditTokenLimits { token_id, page }.encode(),
+                "❌ Сброс",
+                CallbackAction::ResetTokenLimits { token_id, page }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "⏳ 30 дн.",
+                CallbackAction::SetTokenExpirationDirect { token_id, days: 30, page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏳ 60 дн.",
+                CallbackAction::SetTokenExpirationDirect { token_id, days: 60, page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏳ 180 дн.",
+                CallbackAction::SetTokenExpirationDirect { token_id, days: 180, page }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "🌐 2 IP",
+                CallbackAction::SetTokenMaxIpsDirect { token_id, count: Some(2), page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🌐 3 IP",
+                CallbackAction::SetTokenMaxIpsDirect { token_id, count: Some(3), page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🌐 5 IP",
+                CallbackAction::SetTokenMaxIpsDirect { token_id, count: Some(5), page }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "💾 5 GB",
+                CallbackAction::SetTokenDataQuotaDirect { token_id, quota_gb: Some(5), page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "💾 10 GB",
+                CallbackAction::SetTokenDataQuotaDirect { token_id, quota_gb: Some(10), page }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "💾 50 GB",
+                CallbackAction::SetTokenDataQuotaDirect { token_id, quota_gb: Some(50), page }.encode(),
             ),
         ],
         vec![InlineKeyboardButton::callback(

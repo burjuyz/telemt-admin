@@ -172,6 +172,25 @@ pub enum CallbackAction {
         token_id: i64,
         page: i64,
     },
+    ResetTokenLimits {
+        token_id: i64,
+        page: i64,
+    },
+    SetTokenExpirationDirect {
+        token_id: i64,
+        days: i32,
+        page: i64,
+    },
+    SetTokenMaxIpsDirect {
+        token_id: i64,
+        count: Option<i32>,
+        page: i64,
+    },
+    SetTokenDataQuotaDirect {
+        token_id: i64,
+        quota_gb: Option<i64>,
+        page: i64,
+    },
     SendTokenStartLink {
         token_id: i64,
     },
@@ -213,6 +232,24 @@ pub enum CallbackAction {
         group_id: i64,
     },
     GroupApplyExpiry {
+        group_id: i64,
+    },
+    PromptEditGroupLimits {
+        group_id: i64,
+    },
+    SetGroupExpirationDirect {
+        group_id: i64,
+        days: i32,
+    },
+    SetGroupMaxIpsDirect {
+        group_id: i64,
+        count: Option<i32>,
+    },
+    SetGroupDataQuotaDirect {
+        group_id: i64,
+        quota_gb: Option<i64>,
+    },
+    ApplyGroupLimits {
         group_id: i64,
     },
     UserGroupPicker {
@@ -347,6 +384,20 @@ impl CallbackAction {
             Self::PromptEditTokenLimits { token_id, page } => {
                 format!("v1|admin|token|edit|limits|{token_id}|{page}")
             }
+            Self::ResetTokenLimits { token_id, page } => {
+                format!("v1|admin|token|reset|limits|{token_id}|{page}")
+            }
+            Self::SetTokenExpirationDirect { token_id, days, page } => {
+                format!("v1|admin|token|exp|direct|{token_id}|{days}|{page}")
+            }
+            Self::SetTokenMaxIpsDirect { token_id, count, page } => {
+                let count_str = count.map(|c| c.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|token|ips|direct|{token_id}|{}|{}", count_str, page)
+            }
+            Self::SetTokenDataQuotaDirect { token_id, quota_gb, page } => {
+                let quota_str = quota_gb.map(|q| q.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|token|quota|direct|{token_id}|{}|{}", quota_str, page)
+            }
             Self::SendTokenStartLink { token_id } => {
                 format!("v1|admin|token|startlink|{token_id}")
             }
@@ -382,6 +433,23 @@ impl CallbackAction {
             }
             Self::GroupApplyExpiry { group_id } => {
                 format!("v1|admin|groups|apply_expiry|{group_id}")
+            }
+            Self::ApplyGroupLimits { group_id } => {
+                format!("v1|admin|groups|apply_limits|{group_id}")
+            }
+            Self::PromptEditGroupLimits { group_id } => {
+                format!("v1|admin|groups|edit|limits|{group_id}")
+            }
+            Self::SetGroupExpirationDirect { group_id, days } => {
+                format!("v1|admin|groups|exp|direct|{}|{}", group_id, days)
+            }
+            Self::SetGroupMaxIpsDirect { group_id, count } => {
+                let count_str = count.map(|c| c.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|groups|ips|direct|{}|{}", group_id, count_str)
+            }
+            Self::SetGroupDataQuotaDirect { group_id, quota_gb } => {
+                let quota_str = quota_gb.map(|q| q.to_string()).unwrap_or_else(|| "none".to_string());
+                format!("v1|admin|groups|quota|direct|{}|{}", group_id, quota_str)
             }
             Self::UserGroupPicker { tg_user_id, page } => {
                 format!("v1|admin|user|group|pick|{tg_user_id}|{page}")
@@ -586,6 +654,43 @@ impl CallbackAction {
                     page: parse_i64(page)?.max(1),
                 })
             }
+            ["v1", "admin", "token", "reset", "limits", token_id, page] => {
+                Some(Self::ResetTokenLimits {
+                    token_id: parse_i64(token_id)?,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            ["v1", "admin", "token", "exp", "direct", token_id, days, page] => {
+                Some(Self::SetTokenExpirationDirect {
+                    token_id: parse_i64(token_id)?,
+                    days: parse_i64(days)? as i32,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            ["v1", "admin", "token", "ips", "direct", token_id, count, page] => {
+                let max_ips = if *count == "none" {
+                    None
+                } else {
+                    Some(parse_i64(count)? as i32)
+                };
+                Some(Self::SetTokenMaxIpsDirect {
+                    token_id: parse_i64(token_id)?,
+                    count: max_ips,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
+            ["v1", "admin", "token", "quota", "direct", token_id, quota, page] => {
+                let quota_gb = if *quota == "none" {
+                    None
+                } else {
+                    Some(parse_i64(quota)?)
+                };
+                Some(Self::SetTokenDataQuotaDirect {
+                    token_id: parse_i64(token_id)?,
+                    quota_gb,
+                    page: parse_i64(page)?.max(1),
+                })
+            }
             ["v1", "admin", "token", "startlink", token_id] => Some(Self::SendTokenStartLink {
                 token_id: parse_i64(token_id)?,
             }),
@@ -636,6 +741,40 @@ impl CallbackAction {
             ["v1", "admin", "groups", "apply_expiry", group_id] => Some(Self::GroupApplyExpiry {
                 group_id: parse_i64(group_id)?,
             }),
+            ["v1", "admin", "groups", "apply_limits", group_id] => Some(Self::ApplyGroupLimits {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "groups", "edit", "limits", group_id] => Some(Self::PromptEditGroupLimits {
+                group_id: parse_i64(group_id)?,
+            }),
+            ["v1", "admin", "groups", "exp", "direct", group_id, days] => {
+                Some(Self::SetGroupExpirationDirect {
+                    group_id: parse_i64(group_id)?,
+                    days: parse_i64(days)? as i32,
+                })
+            }
+            ["v1", "admin", "groups", "ips", "direct", group_id, count] => {
+                let max_ips = if *count == "none" {
+                    None
+                } else {
+                    Some(parse_i64(count)? as i32)
+                };
+                Some(Self::SetGroupMaxIpsDirect {
+                    group_id: parse_i64(group_id)?,
+                    count: max_ips,
+                })
+            }
+            ["v1", "admin", "groups", "quota", "direct", group_id, quota] => {
+                let quota_gb = if *quota == "none" {
+                    None
+                } else {
+                    Some(parse_i64(quota)?)
+                };
+                Some(Self::SetGroupDataQuotaDirect {
+                    group_id: parse_i64(group_id)?,
+                    quota_gb,
+                })
+            }
             ["v1", "admin", "user", "group", "pick", tg_user_id, page] => {
                 Some(Self::UserGroupPicker {
                     tg_user_id: parse_i64(tg_user_id)?,

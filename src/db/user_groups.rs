@@ -8,6 +8,9 @@ pub struct UserGroup {
     pub created_at: i64,
     /// Unix-время окончания действия (для массового PATCH), `None` — без общего срока.
     pub expires_at: Option<i64>,
+    pub default_expiration_days: Option<i32>,
+    pub default_max_unique_ips: Option<i32>,
+    pub default_data_quota_bytes: Option<i64>,
 }
 
 impl Db {
@@ -28,7 +31,7 @@ impl Db {
             .execute(&self.pool)
             .await?;
         let row = sqlx::query_as::<_, UserGroup>(
-            "SELECT id, name, created_at, expires_at FROM user_groups WHERE name = ? LIMIT 1",
+            "SELECT id, name, created_at, expires_at, default_expiration_days, default_max_unique_ips, default_data_quota_bytes FROM user_groups WHERE name = ? LIMIT 1",
         )
         .bind(name)
         .fetch_one(&self.pool)
@@ -38,7 +41,7 @@ impl Db {
 
     pub async fn list_user_groups(&self) -> Result<Vec<UserGroup>, anyhow::Error> {
         let rows = sqlx::query_as::<_, UserGroup>(
-            "SELECT id, name, created_at, expires_at FROM user_groups ORDER BY name ASC, id ASC",
+            "SELECT id, name, created_at, expires_at, default_expiration_days, default_max_unique_ips, default_data_quota_bytes FROM user_groups ORDER BY name ASC, id ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -50,7 +53,7 @@ impl Db {
         group_id: i64,
     ) -> Result<Option<UserGroup>, anyhow::Error> {
         let row = sqlx::query_as::<_, UserGroup>(
-            "SELECT id, name, created_at, expires_at FROM user_groups WHERE id = ? LIMIT 1",
+            "SELECT id, name, created_at, expires_at, default_expiration_days, default_max_unique_ips, default_data_quota_bytes FROM user_groups WHERE id = ? LIMIT 1",
         )
         .bind(group_id)
         .fetch_optional(&self.pool)
@@ -83,7 +86,7 @@ impl Db {
         tg_user_id: i64,
     ) -> Result<Option<UserGroup>, anyhow::Error> {
         let row = sqlx::query_as::<_, UserGroup>(
-            "SELECT g.id, g.name, g.created_at, g.expires_at
+            "SELECT g.id, g.name, g.created_at, g.expires_at, g.default_expiration_days, g.default_max_unique_ips, g.default_data_quota_bytes
              FROM user_groups g
              INNER JOIN user_group_members m ON m.group_id = g.id
              WHERE m.tg_user_id = ?
@@ -208,6 +211,29 @@ impl Db {
             .bind(group_id)
             .execute(&self.pool)
             .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn update_user_group_limits(
+        &self,
+        group_id: i64,
+        default_expiration_days: Option<i32>,
+        default_max_unique_ips: Option<i32>,
+        default_data_quota_bytes: Option<i64>,
+    ) -> Result<bool, anyhow::Error> {
+        let result = sqlx::query(
+            "UPDATE user_groups
+             SET default_expiration_days = ?,
+                 default_max_unique_ips = ?,
+                 default_data_quota_bytes = ?
+             WHERE id = ?",
+        )
+        .bind(default_expiration_days)
+        .bind(default_max_unique_ips)
+        .bind(default_data_quota_bytes)
+        .bind(group_id)
+        .execute(&self.pool)
+        .await?;
         Ok(result.rows_affected() > 0)
     }
 }

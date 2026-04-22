@@ -109,7 +109,10 @@ impl Db {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 created_at INTEGER NOT NULL,
-                expires_at INTEGER
+                expires_at INTEGER,
+                default_expiration_days INTEGER,
+                default_max_unique_ips INTEGER,
+                default_data_quota_bytes INTEGER
             );
             CREATE TABLE IF NOT EXISTS user_group_members (
                 tg_user_id INTEGER PRIMARY KEY,
@@ -122,6 +125,13 @@ impl Db {
         .execute(&self.pool)
         .await
         .map_err(|e| anyhow::anyhow!("Миграция user_groups: {}", e))?;
+
+        self.ensure_column_exists("user_groups", "default_expiration_days", "INTEGER")
+            .await?;
+        self.ensure_column_exists("user_groups", "default_max_unique_ips", "INTEGER")
+            .await?;
+        self.ensure_column_exists("user_groups", "default_data_quota_bytes", "INTEGER")
+            .await?;
 
         Ok(())
     }

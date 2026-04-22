@@ -264,12 +264,20 @@ pub async fn approve_request_and_build_link(
     let (expiration_days, max_unique_ips, data_quota_bytes, group_id) =
         if let Some(token_id) = request.invite_token_id {
             if let Some(token) = state.db.get_active_invite_token_by_id(token_id).await? {
-                (
-                    token.default_expiration_days,
-                    token.default_max_unique_ips,
-                    token.default_data_quota_bytes,
-                    token.default_group_id,
-                )
+                let mut exp = token.default_expiration_days;
+                let mut ips = token.default_max_unique_ips;
+                let mut quota = token.default_data_quota_bytes;
+                let gid = token.default_group_id;
+
+                if let Some(gid) = gid {
+                    if let Some(group) = state.db.get_user_group_by_id(gid).await? {
+                        exp = exp.or(group.default_expiration_days);
+                        ips = ips.or(group.default_max_unique_ips);
+                        quota = quota.or(group.default_data_quota_bytes);
+                    }
+                }
+
+                (exp, ips, quota, gid)
             } else {
                 (None, None, None, None)
             }

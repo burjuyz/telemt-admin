@@ -1332,13 +1332,33 @@ pub async fn admin_show_group_card(
         ),
         None => "\nОбщий срок группы: не задан.".to_string(),
     };
+
+    let limits_line = {
+        let mut parts = Vec::new();
+        if let Some(days) = group.default_expiration_days {
+            parts.push(format!("срок {} дн.", days));
+        }
+        if let Some(ips) = group.default_max_unique_ips {
+            parts.push(format!("IP: {}", ips));
+        }
+        if let Some(quota) = group.default_data_quota_bytes {
+            let gb = quota as f64 / 1_073_741_824.0;
+            parts.push(format!(" quota {:.1} GB", gb));
+        }
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!("\n📈 Лимиты по умолчанию:\n  • {}", parts.join("\n  • "))
+        }
+    };
+
     let text = format!(
-        "📁 Группа: {}\nID: {}\nСоздана: {}\nУчастников: {}{}\n\n\
+        "📁 Группа: {}\nID: {}\nСоздана: {}\nУчастников: {}{}{}\n\n\
          «Задать/изменить срок» обновит общий срок группы через UI.\n\
          «Снять срок» очистит общий срок группы.\n\
          «Отключить всех» удалит пользователей из telemt и локальной БД, затем удалит группу.\n\
          «Применить срок» выставит всем участникам `expiration` из RFC3339, вычисленного из unix-срока группы.",
-        group.name, group.id, created_line, n, exp_line
+        group.name, group.id, created_line, n, exp_line, limits_line
     );
     upsert_screen(
         bot,

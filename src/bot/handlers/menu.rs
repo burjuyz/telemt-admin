@@ -157,6 +157,14 @@ async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> H
             )
             .await?;
         }
+        Some(WizardState::AdminEditGroupLimits { .. }) => {
+            clear_wizard_state(&state, user_id).await?;
+            bot.send_message(
+                msg.chat.id,
+                "Редактирование лимитов группы отменено (используйте кнопки на карточке группы).",
+            )
+            .await?;
+        }
         Some(WizardState::AdminImportAwaitingTgId) => {
             if !is_admin_message(&msg, &state) {
                 clear_wizard_state(&state, user_id).await?;
