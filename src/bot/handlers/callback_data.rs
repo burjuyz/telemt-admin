@@ -883,13 +883,13 @@ fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
 }
 
-fn parse_optional_group_suffix(parts: &[&str]) -> (Option<i64>, &str) {
+fn parse_optional_group_suffix<'a>(parts: &'a [&'a str]) -> (Option<i64>, &'a str) {
     let mut it = parts.iter();
     while let Some(p) = it.next() {
         if *p == "g" {
             if let Some(group_id_str) = it.next() {
                 if let Ok(gid) = group_id_str.parse::<i64>() {
-                    let remaining: Vec<&str> = it.map(|s| *s).collect();
+                    let remaining: Vec<&'a str> = it.map(|s| *s).collect();
                     let remaining_str = remaining.join(":");
                     return (Some(gid), remaining_str.as_str());
                 }
