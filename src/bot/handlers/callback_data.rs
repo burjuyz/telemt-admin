@@ -492,6 +492,7 @@ impl CallbackAction {
             Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
             Self::SelectAllVisibleUsers { page, filter_group_id } => {
                 match filter_group_id {
+                    Some(-1) => format!("v1|admin|users|select|all|{}|p{}|filter|nogroup", page, page),
                     Some(gid) => format!("v1|admin|users|select|all|{}|p{}|filter|g|{}", page, page, gid),
                     None => format!("v1|admin|users|select|all|{}|p{}", page, page),
                 }
@@ -825,6 +826,12 @@ impl CallbackAction {
                 Some(Self::ClearUserSelectionAndReturn)
             }
             ["v1", "admin", "users", "select", "actions"] => Some(Self::ShowUserSelectionActions),
+            ["v1", "admin", "users", "select", "all", page, "filter", "nogroup"] => {
+                Some(Self::SelectAllVisibleUsers {
+                    page: parse_i64(page)?.max(1),
+                    filter_group_id: Some(-1),
+                })
+            }
             ["v1", "admin", "users", "select", "all", page, "filter", rest @ ..] => {
                 let filter_group_id = parse_optional_group_suffix(rest);
                 Some(Self::SelectAllVisibleUsers {

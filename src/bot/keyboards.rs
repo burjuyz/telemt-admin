@@ -584,12 +584,16 @@ pub fn users_page_keyboard(
     rows.push(vec![
         InlineKeyboardButton::callback(
             "☑️ Выбрать все",
-            CallbackAction::ShowUserSelectionActions.encode(),
+            CallbackAction::SelectAllVisibleUsers {
+                page,
+                filter_group_id,
+            }
+            .encode(),
         ),
         InlineKeyboardButton::callback("❌ Очистить", CallbackAction::ClearUserSelection.encode()),
     ]);
 
-    if filter_group_id.is_some() {
+    if filter_group_id.is_some() && filter_group_id != Some(-1) {
         rows.push(vec![InlineKeyboardButton::callback(
             "🔍 Показать всех",
             CallbackAction::ShowUsersPage { page: 1 }.encode(),

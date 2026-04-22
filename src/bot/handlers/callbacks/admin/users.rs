@@ -129,10 +129,17 @@ pub async fn handle(
             };
             let users_page_size = state.config.users_page_size.max(1);
             let offset = (page - 1) * users_page_size;
-            let user_ids = if let Some(gid) = filter_group_id {
-                state.db.list_users_in_group(gid, users_page_size, offset).await?
-            } else {
-                state.db.list_users_without_group(users_page_size, offset).await?
+            let user_ids = match filter_group_id {
+                Some(-1) => {
+                    state.db.list_users_without_group(users_page_size, offset).await?
+                }
+                Some(gid) => {
+                    state.db.list_users_in_group(gid, users_page_size, offset).await?
+                }
+                None => {
+                    let rows = state.db.list_active_users_page(users_page_size, offset).await?;
+                    rows.into_iter().map(|r| r.tg_user_id).collect()
+                }
             };
             {
                 let mut selected = state.selected_users.lock().unwrap();
@@ -142,10 +149,16 @@ pub async fn handle(
             }
             let count = state.selected_users.lock().unwrap().len();
             ack_callback(bot, q.id.clone(), Some(&format!("Выбрано: {}", count)), false).await?;
-            if let Some(gid) = filter_group_id {
-                admin_show_users_page_by_group(bot, chat_id, state, page, gid, Some(message_id)).await?;
-            } else {
-                admin_show_users_page_without_group(bot, chat_id, state, page, Some(message_id)).await?;
+            match filter_group_id {
+                Some(-1) => {
+                    admin_show_users_page_without_group(bot, chat_id, state, page, Some(message_id)).await?;
+                }
+                Some(gid) => {
+                    admin_show_users_page_by_group(bot, chat_id, state, page, gid, Some(message_id)).await?;
+                }
+                None => {
+                    admin_show_users_page(bot, chat_id, state, page, Some(message_id)).await?;
+                }
             }
             Ok(true)
         }
