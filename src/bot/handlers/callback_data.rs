@@ -492,9 +492,9 @@ impl CallbackAction {
             Self::ShowUserSelectionActions => "v1|admin|users|select|actions".to_string(),
             Self::SelectAllVisibleUsers { page, filter_group_id } => {
                 match filter_group_id {
-                    Some(-1) => format!("v1|admin|users|select|all|{}|p{}|filter|nogroup", page, page),
-                    Some(gid) => format!("v1|admin|users|select|all|{}|p{}|filter|g|{}", page, page, gid),
-                    None => format!("v1|admin|users|select|all|{}|p{}", page, page),
+                    Some(-1) => format!("v1|admin|users|select|all|{}|filter|nogroup", page),
+                    Some(gid) => format!("v1|admin|users|select|all|{}|filter|g|{}", page, gid),
+                    None => format!("v1|admin|users|select|all|{}", page),
                 }
             }
             Self::BulkAssignGroup { group_id } => {
