@@ -1116,36 +1116,35 @@ pub fn token_edit_group_picker_keyboard(token_id: i64, page: i64, groups: &[crat
 }
 
 pub fn token_edit_limits_keyboard(token_id: i64, page: i64) -> InlineKeyboardMarkup {
-    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-
-    rows.push(vec![
-        InlineKeyboardButton::callback(
-            "30 дн.",
-            CallbackAction::SetTokenExpiration {
-                days: 30,
-                auto_approve: true,
-            }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            "60 дн.",
-            CallbackAction::SetTokenExpiration {
-                days: 60,
-                auto_approve: true,
-            }.encode(),
-        ),
-        InlineKeyboardButton::callback(
-            "180 дн.",
-            CallbackAction::SetTokenExpiration {
-                days: 180,
-                auto_approve: true,
-            }.encode(),
-        ),
-    ]);
-
-    rows.push(vec![InlineKeyboardButton::callback(
-        "⬅️ Назад к токену",
-        CallbackAction::OpenTokenCard { token_id, page }.encode(),
-    )]);
+    let rows = vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "30 дн.",
+                CallbackAction::SetTokenExpiration {
+                    days: 30,
+                    auto_approve: true,
+                }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "60 дн.",
+                CallbackAction::SetTokenExpiration {
+                    days: 60,
+                    auto_approve: true,
+                }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "180 дн.",
+                CallbackAction::SetTokenExpiration {
+                    days: 180,
+                    auto_approve: true,
+                }.encode(),
+            ),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "⬅️ Назад к токену",
+            CallbackAction::OpenTokenCard { token_id, page }.encode(),
+        )],
+    ];
 
     InlineKeyboardMarkup::new(rows)
 }
