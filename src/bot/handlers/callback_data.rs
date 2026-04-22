@@ -889,19 +889,6 @@ fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
 }
 
-fn parse_optional_group_suffix<'a>(parts: &'a [&'a str]) -> Option<i64> {
-    let mut it = parts.iter();
-    while let Some(p) = it.next() {
-        if *p == "g"
-            && let Some(group_id_str) = it.next()
-            && let Ok(gid) = group_id_str.parse::<i64>()
-        {
-            return Some(gid);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::{CallbackAction, ServiceAction, UserLimitField};
