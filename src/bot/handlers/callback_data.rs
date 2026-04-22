@@ -832,11 +832,10 @@ impl CallbackAction {
                     filter_group_id: Some(-1),
                 })
             }
-            ["v1", "admin", "users", "select", "all", page, "filter", rest @ ..] => {
-                let filter_group_id = parse_optional_group_suffix(rest);
+            ["v1", "admin", "users", "select", "all", page, "filter", "g", group_id] => {
                 Some(Self::SelectAllVisibleUsers {
                     page: parse_i64(page)?.max(1),
-                    filter_group_id,
+                    filter_group_id: Some(parse_i64(group_id)?),
                 })
             }
             ["v1", "admin", "users", "select", "all", page] => {
