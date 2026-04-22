@@ -895,6 +895,52 @@ pub async fn admin_show_users_page_by_group(
     .await
 }
 
+pub async fn admin_show_users_page_without_group(
+    bot: &Bot,
+    chat_id: ChatId,
+    state: &BotState,
+    requested_page: i64,
+    message_id: Option<MessageId>,
+) -> HandlerResult {
+    let total_users = state.db.count_users_without_group().await?;
+    let users_page_size = state.config.users_page_size.max(1);
+    let selected_users = state.selected_users.lock().unwrap().clone();
+
+    render_paged_selector_screen(
+        bot,
+        PagedSelectorConfig {
+            chat_id,
+            message_id,
+            total_items: total_users,
+            page_size: users_page_size,
+            requested_page,
+            empty_text: "👥 Пользователи · Без группы\n\nПользователей без группы нет.".to_string(),
+            empty_keyboard: crate::bot::keyboards::users_page_keyboard_empty(1, None),
+        },
+        |limit, offset| state.db.list_users_without_group(limit, offset),
+        |&tg_user_id| (tg_user_id, format!("id {}", tg_user_id)),
+        |total, page, total_pages| {
+            let selected_count = selected_users.len();
+            let header = if selected_count > 0 {
+                format!(
+                    "👥 Пользователи · Без группы\nУчастников: {} (выбрано: {}) | Стр: {}/{}",
+                    total, selected_count, page, total_pages
+                )
+            } else {
+                format!(
+                    "👥 Пользователи · Без группы\nУчастников: {} | Страница: {}/{}",
+                    total, page, total_pages
+                )
+            };
+            format!("{}\n\nВыберите пользователя (⬜ - выбрать).", header)
+        },
+        |users, page, total_pages| {
+            crate::bot::keyboards::users_page_keyboard(users, page, total_pages, None, &selected_users)
+        },
+    )
+    .await
+}
+
 pub async fn admin_show_stats(
     bot: &Bot,
     chat_id: ChatId,
@@ -1150,15 +1196,21 @@ pub async fn show_user_card_screen(
     bot: &Bot,
     chat_id: ChatId,
     message_id: Option<MessageId>,
+    state: &BotState,
     user: &crate::db::RegistrationRequest,
     runtime_info: Option<crate::telemt_backend::TelemtUserInfo>,
     page: i64,
 ) -> HandlerResult {
+    let group_name = state
+        .db
+        .get_group_for_tg_user(user.tg_user_id)
+        .await?
+        .map(|g| g.name);
     upsert_screen(
         bot,
         chat_id,
         message_id,
-        render_user_card_text(user, runtime_info.as_ref()),
+        render_user_card_text(user, runtime_info.as_ref(), group_name.as_deref()),
         crate::bot::keyboards::user_card_keyboard(user.tg_user_id, page),
     )
     .await

@@ -167,6 +167,10 @@ pub fn users_group_filter_keyboard(groups: &[crate::db::UserGroup]) -> InlineKey
         )]);
     }
     rows.push(vec![InlineKeyboardButton::callback(
+        "❌ Без группы",
+        CallbackAction::ShowUsersPageWithoutGroup { page: 1 }.encode(),
+    )]);
+    rows.push(vec![InlineKeyboardButton::callback(
         "⬅️ К списку пользователей",
         CallbackAction::ShowUsersPage { page: 1 }.encode(),
     )]);
@@ -635,7 +639,7 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
         )])
         .append_row(vec![
             InlineKeyboardButton::callback(
-                "TCP лимит",
+                "🛡️ TCP",
                 CallbackAction::PromptUserLimit {
                     tg_user_id,
                     page,
@@ -644,7 +648,7 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
                 .encode(),
             ),
             InlineKeyboardButton::callback(
-                "IP лимит",
+                "🌐 IP",
                 CallbackAction::PromptUserLimit {
                     tg_user_id,
                     page,
@@ -655,7 +659,7 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
         ])
         .append_row(vec![
             InlineKeyboardButton::callback(
-                "Квота",
+                "💾 Квота",
                 CallbackAction::PromptUserLimit {
                     tg_user_id,
                     page,
@@ -664,7 +668,7 @@ pub fn user_card_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMarkup {
                 .encode(),
             ),
             InlineKeyboardButton::callback(
-                "Истекает",
+                "⏳ Срок",
                 CallbackAction::PromptUserLimit {
                     tg_user_id,
                     page,

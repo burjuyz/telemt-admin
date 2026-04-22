@@ -131,6 +131,7 @@ fn format_optional_bytes(value: Option<u64>) -> String {
 pub fn render_user_card_text(
     user: &RegistrationRequest,
     runtime_info: Option<&TelemtUserInfo>,
+    group_name: Option<&str>,
 ) -> String {
     let display_name = user_display_name(user);
     let status = user.status.to_string();
@@ -175,9 +176,12 @@ pub fn render_user_card_text(
         .map(format_timestamp)
         .unwrap_or_else(|| "—".to_string());
 
+    let group_line = format!("📁 Группа: {}\n", group_name.unwrap_or("нет"));
+
     let mut lines = vec![
         format!("👤 {}\n", display_name),
         format!("🆔 {} | 📋 {}\n", tg_user_id, status),
+        format!("{}\n", group_line),
         format!(
             "📡 ● {} соединений | 🌐 {} active IP | 🕘 {} recent IP\n",
             current_connections, active_unique_ips, recent_unique_ips
@@ -185,7 +189,7 @@ pub fn render_user_card_text(
         format!("📦 {} трафика\n", total_octets),
         String::new(),
         format!(
-            "🛡 TCP: {} | 🌍 IP: {} | 🧮 Квота: {}\n",
+            "🛡️ TCP {} | 🌐 IP {} | 💾 {}\n",
             max_tcp, max_ips, quota
         ),
     ];
@@ -329,7 +333,7 @@ mod tests {
 
     #[test]
     fn render_user_card_text_includes_runtime_and_sync_data() {
-        let text = render_user_card_text(&sample_request(), Some(&sample_runtime_info()));
+        let text = render_user_card_text(&sample_request(), Some(&sample_runtime_info()), None);
 
         assert!(text.contains("Alice"));
         assert!(text.contains("42"));
@@ -344,9 +348,9 @@ mod tests {
         let mut info = sample_runtime_info();
         info.max_tcp_conns = Some(10);
         info.current_connections = Some(5);
-        let text = render_user_card_text(&req, Some(&info));
+        let text = render_user_card_text(&req, Some(&info), None);
 
-        assert!(text.contains("TCP: 10"));
+        assert!(text.contains("TCP 10"));
         assert!(text.contains("соединений"));
     }
 

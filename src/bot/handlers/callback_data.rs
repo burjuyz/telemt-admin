@@ -84,6 +84,9 @@ pub enum CallbackAction {
         page: i64,
         group_id: i64,
     },
+    ShowUsersPageWithoutGroup {
+        page: i64,
+    },
     PromptUserLookup {
         page: i64,
     },
@@ -311,6 +314,9 @@ impl CallbackAction {
             Self::ShowUsersPageByGroup { page, group_id } => {
                 format!("v1|admin|users|page|{page}|group|{group_id}")
             }
+            Self::ShowUsersPageWithoutGroup { page } => {
+                format!("v1|admin|users|page|{page}|nogroup")
+            }
             Self::PromptUserLookup { page } => format!("v1|admin|users|lookup|{page}"),
             Self::OpenUserCard { tg_user_id, page } => {
                 format!("v1|admin|user|open|{tg_user_id}|{page}")
@@ -527,6 +533,11 @@ impl CallbackAction {
                 Some(Self::ShowUsersPageByGroup {
                     page: parse_i64(page)?.max(1),
                     group_id: parse_i64(group_id)?,
+                })
+            }
+            ["v1", "admin", "users", "page", page, "nogroup"] => {
+                Some(Self::ShowUsersPageWithoutGroup {
+                    page: parse_i64(page)?.max(1),
                 })
             }
             ["v1", "admin", "users", "lookup", page] => Some(Self::PromptUserLookup {

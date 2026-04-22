@@ -118,6 +118,36 @@ impl Db {
         Ok(rows)
     }
 
+    pub async fn list_users_without_group(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<i64>, anyhow::Error> {
+        let rows = sqlx::query_scalar::<_, i64>(
+            "SELECT r.tg_user_id FROM registration_requests r
+             LEFT JOIN user_group_members m ON m.tg_user_id = r.tg_user_id
+             WHERE r.status = 'approved' AND m.tg_user_id IS NULL
+             ORDER BY r.last_synced_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn count_users_without_group(&self) -> Result<i64, anyhow::Error> {
+        let n = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM registration_requests r
+             LEFT JOIN user_group_members m ON m.tg_user_id = r.tg_user_id
+             WHERE r.status = 'approved' AND m.tg_user_id IS NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n)
+    }
+
     pub async fn count_users_in_group(&self, group_id: i64) -> Result<i64, anyhow::Error> {
         let n = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM user_group_members WHERE group_id = ?",

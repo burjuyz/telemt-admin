@@ -5,8 +5,8 @@ use crate::bot::handlers::actions::{
 };
 use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{
-    admin_show_users_page, admin_show_users_page_by_group, send_user_qr_to_admin,
-    show_user_ban_confirm, show_user_rotate_secret_confirm,
+    admin_show_users_page, admin_show_users_page_by_group, admin_show_users_page_without_group,
+    send_user_qr_to_admin, show_user_ban_confirm, show_user_rotate_secret_confirm,
 };
 use crate::bot::handlers::shared::{callback_message_target, require_admin_callback};
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state, set_wizard_state};
@@ -36,6 +36,15 @@ pub async fn handle(
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
             admin_show_users_page_by_group(bot, chat_id, state, page, group_id, Some(message_id))
+                .await?;
+            Ok(true)
+        }
+        CallbackAction::ShowUsersPageWithoutGroup { page } => {
+            let Some((_, chat_id, message_id)) = admin_callback_target(bot, q, state).await? else {
+                return Ok(true);
+            };
+            ack_callback(bot, q.id.clone(), None, false).await?;
+            admin_show_users_page_without_group(bot, chat_id, state, page, Some(message_id))
                 .await?;
             Ok(true)
         }

@@ -106,7 +106,7 @@ pub async fn show_user_card(
     state: &BotState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let runtime_info = load_runtime_info(state, user).await;
-    show_user_card_screen(bot, chat_id, message_id, user, runtime_info, page).await
+    show_user_card_screen(bot, chat_id, message_id, state, user, runtime_info, page).await
 }
 
 pub async fn prompt_delete_confirmation(
